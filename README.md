@@ -150,15 +150,29 @@ Node yang **sudah terdata dengan data asli**:
 
 | Node | Tipe | IP | Dokumentasi | Status |
 |---|---|---|---|---|
+| `HPC-GPU` | Bare-metal Compute (2× A100) | `192.168.18.178` | [inventory/hpc-nodes/hpc-gpu.md](inventory/hpc-nodes/hpc-gpu.md) | 🟢 Production |
 | `proxmox` | Bare-metal Hypervisor (PVE 9.2) | `192.168.18.190` | [inventory/proxmox-nodes/proxmox.md](inventory/proxmox-nodes/proxmox.md) | 🟢 Production |
 
 Legenda status: 🟢 Production · 🟡 Maintenance · 🔴 Down · ⚪ Decommissioned · 🔵 Staging
 
+### 4.1 Node yang teridentifikasi tapi belum didata
+
+Muncul dari konfigurasi node yang sudah didata, belum ada dokumennya:
+
+| Host | Peran | Ditemukan dari |
+|---|---|---|
+| `pipeline` — `192.168.18.194` | Slurm controller (`slurmctld`) cluster `bioinfo` | `slurm.conf` di `HPC-GPU` |
+| `192.168.30.2` | Storage NFS — export `/bio-pool` (20 T) | mount aktif di `HPC-GPU` |
+| `192.168.18.113` | Storage NFS — export `/media/t4/96-Storage` | `fstab` di `HPC-GPU` (mount gagal) |
+
 > **Catatan penting:** arsitektur di §2 dan mapping storage di §3 adalah **desain
-> target** — node `login-01`, `hpc-node-01..NN`, dan `storage-node-01` di sana
-> belum ada wujud fisiknya / belum didata. Satu-satunya node yang sudah terdata
-> adalah `proxmox`, dan node itu saat ini merangkap tiga peran sekaligus
-> (hypervisor + arsip 140 TB + target backup).
+> target**, bukan keadaan sekarang. Nama seperti `login-01`, `hpc-node-01..NN`,
+> dan `storage-node-01` di diagram itu tidak ada wujud fisiknya.
+>
+> Keadaan sebenarnya: **`HPC-GPU`** adalah satu-satunya node komputasi (dan
+> merangkap login node — belum ada head node terpisah), dan **`proxmox`** merangkap
+> tiga peran sekaligus (hypervisor + arsip 140 TB + target backup).
+> Path scratch di `HPC-GPU` juga **`/mnt/scratch`**, bukan `/scratch` seperti di §3.
 >
 > Kerangka dokumen untuk tipe node lain ada di
 > [`inventory/_templates/`](inventory/_templates/) — isinya contoh, bukan server nyata.
