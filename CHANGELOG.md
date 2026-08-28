@@ -40,10 +40,35 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
-- *(belum ada)*
+- `inventory/proxmox-nodes/proxmox.md` — **pendataan node asli pertama**.
+  Host Supermicro H12SSL-I / AMD EPYC 7B13 (64C/128T), RAM 256 GB DDR4-3200 ECC,
+  Proxmox VE 9.2.10 di Debian 13. Mencakup 13 disk fisik lengkap dengan serial &
+  status SMART, 4 ZFS pool (`zfs-storage` raidz2 11×14 TB di atas LUKS,
+  `backup-pool`, `nvme-scratch`, `rpool`), konfigurasi jaringan, IPMI,
+  2 VM (`dev-pipeline`, `dev-bioinfo`), dan 18 temuan Known Issues terprioritas.
+  Data dikumpulkan otomatis via SSH pada 2026-08-28.
+- `docs/penginputan-node.md` — panduan penginputan node: alur 6 langkah dari
+  pengumpulan data sampai Pull Request, peta output kolektor ke bagian dokumen,
+  daftar field yang wajib disurvei fisik, dan cara menyusun Known Issues.
+- `scripts/collect-proxmox.sh` — kolektor inventaris Proxmox, seluruhnya read-only,
+  bisa dijalankan via SSH (`<host> [user] [key]`) atau langsung di host (`--local`).
+- `inventory/_templates/README.md` — penjelasan bahwa isi folder template adalah
+  contoh, bukan server nyata, beserta cara menyalinnya.
 
 ### Changed
-- *(belum ada)*
+- **Template contoh dipisahkan dari data asli.** Tiga dokumen contoh dipindah
+  (isi tidak diubah sama sekali):
+  - `inventory/hpc-nodes/hpc-node-01.md` → `inventory/_templates/hpc-node.template.md`
+  - `inventory/storage-nodes/storage-node-01.md` → `inventory/_templates/storage-node.template.md`
+  - `inventory/proxmox-nodes/proxmox-node-01.md` → `inventory/_templates/proxmox-node.template.md`
+- `README.md` §4 — tabel Index Node kini hanya memuat node yang benar-benar ada
+  (`proxmox`), dengan catatan bahwa arsitektur di §2–§3 masih berupa desain target.
+- `README.md` §5 — struktur repository diperbarui: `inventory/_templates/`,
+  `scripts/`, `docs/penginputan-node.md`.
+- `README.md` §7.1 — tabel prefix gambar ditambah baris `docs/` dan `inventory/_templates/`.
+- `README.md` §8 — prosedur menambah node mengarah ke kolektor dan folder template.
+- Konvensi penamaan file node: memakai **hostname asli** (`proxmox.md`),
+  bukan nomor urut (`proxmox-node-01.md`).
 
 ### Deprecated
 - *(belum ada)*
@@ -55,7 +80,12 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - *(belum ada)*
 
 ### Security
-- *(belum ada)*
+- Terdokumentasi dari pendataan `proxmox` (belum ditindaklanjuti, lihat §12 dokumen node):
+  firewall Proxmox belum aktif, IPMI satu segmen dengan jaringan data via DHCP,
+  SNMP BMC masih community `public`, `PermitRootLogin yes`, hanya ada `root@pam`
+  tanpa 2FA, dan **VM belum punya backup sama sekali**.
+- `scripts/collect-proxmox.sh` sengaja tidak pernah mencetak password, private key,
+  passphrase LUKS, maupun isi berkas kredensial.
 
 ---
 
