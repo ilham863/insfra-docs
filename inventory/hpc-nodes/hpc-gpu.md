@@ -5,11 +5,12 @@
 > **Terakhir Diperbarui:** 2026-08-28
 > **PIC Node:** *(isi nama sysadmin)*
 > **Sumber Data:** auto-collect via SSH — `scripts/collect-hpc.sh`, 2026-08-28 15:00 WIB
+> · data BMC in-band (`ipmitool` FRU/SEL/SDR) 2026-08-28 15:40 WIB
 > **Dokumen Terkait:** [server-changelog](../../track-record/server-changelog.md) · [maintenance-log](../../track-record/maintenance-log.md) · [SOP Eksekusi](../../docs/sop/sop-bioinformatics-execution.md) · [Panduan Penginputan](../../docs/penginputan-node.md)
 
 > **Peran node ini:** satu-satunya node komputasi. Terdaftar di Slurm cluster
 > `bioinfo` sebagai `compute001`, tapi **pada praktiknya dipakai sebagai server
-> interaktif bersama** — lihat [§13 Known Issues](#13-known-issues--risiko) temuan #1.
+> interaktif bersama** — lihat [§13 Known Issues](#13-known-issues--risiko) temuan #4.
 
 ---
 
@@ -26,7 +27,10 @@
 | **Tipe Chassis** | Main Server Chassis |
 | **Serial Number (DMI)** | ⚠️ `To Be Filled By O.E.M.` — **belum diprogram** |
 | **Manufacturer (DMI)** | ⚠️ `To Be Filled By O.E.M.` |
-| **Asset Tag (internal)** | *(isi — WAJIB, karena serial DMI kosong)* |
+| **Board Serial (FRU/BMC)** | ✅ **`BR80H7011500014`** — *identitas aset yang sahih, dari `ipmitool fru print`* |
+| **Board Manufacturer (FRU)** | ASRockRack |
+| **Tanggal Produksi Board (FRU)** | **2024-08-30** — *acuan awal untuk menghitung garansi* |
+| **Asset Tag (internal)** | *(isi)* |
 | **BIOS** | versi **P3.50**, rilis **2022-10-27** ⚠️ *± 4 tahun* |
 | **Form Factor** | *(isi: rackmount xU / tower)* |
 | **Tanggal Pembelian** | *(isi)* |
@@ -65,7 +69,157 @@ Belum terdata — field di bawah **tidak bisa** diambil lewat SSH, harus disurve
 | **Bad Password Threshold** | ⚠️ **0** — tidak ada lockout, brute-force tak terbatas |
 | **User Lockout Interval** | 600 detik *(tidak berlaku karena threshold 0)* |
 | **RMCP+ Cipher Suites** | ⚠️ `0,1,2,3,...` — **cipher suite 0 aktif** (priv `CALLBACK`) |
+| **Power Restore Policy** | ⚠️ **`always-off`** — setelah listrik padam, server **tidak menyala sendiri** |
 | **Kredensial** | simpan di password manager, entri `IPMI / HPC-GPU` — **jangan tulis di sini** |
+
+### 2.1 Akun BMC
+
+| ID | Nama | Callin | Link Auth | IPMI Msg | Privilege |
+|---|---|---|---|---|---|
+| 2 | `admin` | false | false | true | **ADMINISTRATOR** |
+| 3 | `Administrator` | true | true | true | **ADMINISTRATOR** |
+| 4 | `fwupd` | true | false | false | **ADMINISTRATOR** |
+| 1, 5–15 | *(kosong)* | — | — | — | NO ACCESS |
+
+> ⚠️ **Tiga akun ADMINISTRATOR aktif.** `Administrator` dan `fwupd` adalah akun
+> bawaan ASRock Rack — perlu dipastikan password-nya sudah diganti dari default,
+> atau dinonaktifkan kalau tidak dipakai. Digabung dengan
+> `Bad Password Threshold: 0` (tanpa lockout), ini permukaan brute-force yang lebar.
+
+### 2.2 Identitas Chassis (FRU)
+
+```
+Board Mfg Date  : 2024-08-30
+Board Mfg       : ASRockRack
+Board Product   : ROME2D32GM-2T
+Board Serial    : BR80H7011500014
+Product Name    : ROME2D32GM-2T
+```
+
+### 2.3 Status Chassis & Daya
+
+| Field | Nilai |
+|---|---|
+| **System Power** | on |
+| **Power Overload / Main Power Fault** | false ✅ |
+| **Chassis Intrusion** | inactive ✅ |
+| **Drive Fault / Cooling-Fan Fault** | false ✅ |
+| **Power Restore Policy** | ⚠️ `always-off` |
+| **VOLT_BAT (baterai CMOS)** | 3.18 V ✅ *(ganti bila < 2.9 V)* |
+| **Rail 12V / 5V / 3.3V** | 12.10 V · 5.04 V · 3.32 V ✅ |
+
+**Sensor PSU tidak terbaca sama sekali:**
+
+| Sensor | Pembacaan |
+|---|---|
+| `TEMP_PSU1` / `TEMP_PSU2` | No Reading |
+| `PWR_PSU1_PIN` / `PWR_PSU2_PIN` | No Reading |
+| `PWR_PSU1_POUT` / `PWR_PSU2_POUT` | No Reading |
+| `VOLT_PSU1_VIN` / `VOLT_PSU2_VIN` | No Reading |
+| `FAN_PSU1` / `FAN_PSU2` | No Reading |
+| `dcmi power reading` | 0 Watt |
+
+> ⚠️ PSU tidak ter-instrumentasi (kemungkinan bukan PSU PMBus/redundant, atau
+> tidak terhubung ke backplane manajemen). Konsekuensinya: **redundansi PSU tidak
+> bisa dikonfirmasi dari jarak jauh, dan konsumsi daya tidak terpantau** — field
+> PSU di §1.1 harus diisi lewat survei fisik.
+
+### 2.4 Suhu & Fan (dari BMC)
+
+| Sensor | Nilai |
+|---|---|
+| `TEMP_CPU1` / `TEMP_CPU2` | 67 °C · 70 °C |
+| `TEMP_DDR4_A`…`P` (16 slot) | 44–53 °C |
+| `TEMP_X550AT2` (NIC) | 40 °C |
+| Fan aktif | `FAN1_1`–`FAN7_1`: 4.500–8.900 RPM |
+| `FAN8_1`, `FAN*_2`, `FAN_PSU*` | No Reading *(slot fan tidak terpasang)* |
+
+Semua dalam batas normal. Perhatikan `FAN2_1` (8.500 RPM) dan `FAN6_1` (8.900 RPM)
+berputar jauh lebih kencang dari yang lain — wajar bila keduanya menghadap CPU/GPU.
+
+### 2.5 System Event Log (SEL) — 🔴 perhatian khusus
+
+| Field | Nilai |
+|---|---|
+| **Entri** | **3.639** |
+| **Free Space** | **0 byte** |
+| **Percent Used** | **100%** |
+| **Overflow** | ⚠️ **true** |
+| **Last Add Time** | **2026-07-09 08:31:03** |
+| **Last Del Time** | 2025-11-06 22:46:32 |
+
+> 🔴 **SEL penuh sejak 2026-07-09.** BMC **tidak bisa mencatat event hardware
+> baru** sejak saat itu — sudah ± 7 minggu tanpa pencatatan. Setiap ECC error,
+> kegagalan PSU, atau thermal trip yang terjadi setelah tanggal itu **hilang
+> tanpa jejak**.
+
+#### Komposisi: 1.046 event Correctable ECC
+
+| Sensor | Jumlah | Rentang waktu |
+|---|---|---|
+| `Memory #0xdd` | 1 | 2026-03-04 15:33 |
+| **`Memory #0x0b`** | **1.045** | **2026-06-27 13:37 → 2026-07-09 08:31** |
+
+Laju error **meningkat**: di awal setiap belasan menit, menjelang SEL penuh
+sudah setiap **± 5 menit**.
+
+> 🔴 **Ini pola DIMM yang sedang menuju gagal.** Correctable ECC berarti error
+> masih bisa dikoreksi, tapi frekuensi setinggi ini dan terus naik biasanya
+> berlanjut ke *uncorrectable* — yang berarti node crash mendadak.
+
+#### Sisi OS sama sekali buta terhadap ini
+
+```
+/sys/devices/system/edac/mc/mc0  ce_count=0  ue_count=0
+/sys/devices/system/edac/mc/mc1  ce_count=0  ue_count=0
+rasdaemon : inactive
+mcelog    : inactive
+ras-mc-ctl: tidak terpasang
+dmesg     : tidak ada entri EDAC/MCE
+```
+
+Jadi error hanya tercatat di BMC, dan BMC-nya sudah berhenti mencatat.
+**Tidak ada satu pun mekanisme yang akan memberi peringatan.**
+
+#### Slot mana yang bermasalah — belum diketahui
+
+`Memory #0x0b` adalah **nomor sensor di SEL**, namespace-nya berbeda dari
+SDR record ID, jadi **tidak bisa** dipetakan langsung ke slot DIMM dari data ini.
+Perlu dipastikan lewat salah satu cara:
+
+1. Buka web UI BMC `https://192.168.18.119` — biasanya menyebut lokasi DIMM pada
+   detail event. **Lakukan ini sebelum SEL dihapus.**
+2. Aktifkan pencatatan sisi OS (lihat langkah di bawah), lalu tunggu error
+   berikutnya muncul dengan label slot yang jelas.
+
+> **Hipotesis yang perlu diverifikasi:** node ini punya **satu DIMM yang berbeda
+> tipe** dari 15 lainnya (`36ASF8G72PZ-2G9B1` @2933 di `P0 CHANNEL C`, lihat §4.1).
+> Perlu dicek apakah modul itu juga yang melempar ECC error. Kalau iya, satu
+> penggantian menyelesaikan dua masalah sekaligus.
+
+#### Langkah perbaikan yang disarankan
+
+```bash
+# 1. Catat dulu lokasi DIMM dari web UI BMC (JANGAN lewati langkah ini)
+
+# 2. Aktifkan pencatatan ECC di sisi OS
+apt install rasdaemon
+systemctl enable --now rasdaemon
+modprobe amd64_edac
+echo amd64_edac >> /etc/modules-load.d/edac.conf
+
+# 3. Verifikasi EDAC sudah membaca controller memori
+ras-mc-ctl --status
+ras-mc-ctl --error-count
+
+# 4. Setelah lokasi DIMM tercatat, kosongkan SEL agar BMC bisa mencatat lagi
+ipmitool sel clear
+ipmitool sel info        # pastikan Percent Used kembali 0%
+
+# 5. Pantau harian
+ras-mc-ctl --error-count
+ipmitool sel list | grep -c 'Correctable ECC'
+```
 
 Perintah operasional:
 
@@ -484,6 +638,9 @@ echo "=== MOUNT GAGAL ==="   ; systemctl --failed --no-pager | grep -i mount
 echo "=== SMART ==="         ; for d in /dev/nvme[0-4]n1; do printf "%-14s " "$d"; smartctl -H "$d" | grep -i 'overall-health'; done
 echo "=== SUHU ==="          ; sensors | grep -E 'Tctl|Composite'
 echo "=== SERVICE GAGAL ===" ; systemctl --failed --no-pager
+echo "=== ECC (OS) ==="      ; for m in /sys/devices/system/edac/mc/mc*; do echo "$(basename $m) ce=$(cat $m/ce_count) ue=$(cat $m/ue_count)"; done
+echo "=== ECC (BMC) ==="     ; ipmitool sel list | grep -c 'Correctable ECC'
+echo "=== SEL PENUH? ==="    ; ipmitool sel info | grep -E 'Entries|Percent Used|Overflow'
 ```
 
 Ambang yang perlu tindakan:
@@ -499,6 +656,9 @@ Ambang yang perlu tindakan:
 | Suhu CPU (Tctl) | > 85 °C | 68–70 °C ✅ |
 | Suhu NVMe (sensor tertinggi) | > 70 °C | 65.8 °C 🟡 |
 | systemd failed units | > 0 | **4** 🔴 |
+| Event ECC di SEL BMC | > 0 | **1.046** 🔴 |
+| `Percent Used` SEL | > 80% | **100%, overflow** 🔴 |
+| `ce_count` EDAC (OS) | > 0 | 0 — ⚠️ *bukan berarti aman, EDAC belum aktif* |
 
 ---
 
@@ -509,31 +669,37 @@ Diurutkan dari dampak paling besar. Semua temuan berasal dari pengumpulan data
 
 | # | Temuan | Dampak | Prioritas |
 |---|---|---|---|
-| 1 | **Slurm dilewati.** Node `State=IDLE`, `CPUAlloc=0`, antrian kosong — tapi load 134.92 dengan 22 user login dan 4 sesi VS Code Remote | Scheduler buta terhadap beban nyata. Job `sbatch` berikutnya akan ditumpuk di atas mesin yang sudah penuh. Melanggar [SOP §standar eksekusi](../../docs/sop/sop-bioinformatics-execution.md) | 🔴 Kritis |
-| 2 | **Autentikasi SSH lemah.** `PermitRootLogin yes` + `PasswordAuthentication yes` di port 22, dan password root sangat lemah | Login root bisa ditebak. **Rotasi password root sekarang**, lalu matikan login password & root | 🔴 Kritis |
-| 3 | **Swap 8 GiB terpakai 100%** (sisa 12 MiB), `node0` cuma bebas 3.2 GB dari 515 GB | Node di ambang OOM. Job berikutnya berisiko dibunuh OOM killer, atau sistem thrashing | 🔴 Kritis |
-| 4 | **Disk OS SSD konsumer tanpa redundansi**, dengan riwayat throttling termal (Warning 1274 mnt, **Critical 15 mnt**) | ADATA LEGEND 800 mati = node tidak bisa boot. Riwayat suhu kritis memperbesar peluang gagal | 🔴 Kritis |
-| 5 | **Firewall mati** (`ufw inactive`, hanya chain Docker), sementara `pmcd`/`pmproxy` mendengarkan di `0.0.0.0` | Metrik sistem dan layanan terbuka ke seluruh LAN | 🟠 Tinggi |
-| 6 | **IPMI tanpa proteksi brute-force** — `Bad Password Threshold: 0`, cipher suite 0 aktif, SNMP community default `AMI`, VLAN disabled | BMC bisa digempur tanpa batas dari LAN yang sama dengan jaringan data | 🟠 Tinggi |
-| 7 | **Tiga jalur akses remote di luar SSH**: Tailscale, Cloudflare Tunnel, TeamViewer | Melewati firewall perimeter. Perlu audit siapa yang punya akses | 🟠 Tinggi |
-| 8 | **Dua mount NFS gagal** — `/mnt/t4-storage` dan `/media/t4-storage-nvme` | Data di kedua share tidak bisa diakses; pipeline yang mengacu ke path itu akan gagal | 🟠 Tinggi |
-| 9 | **Default route lewat 1 GbE**, bukan 10 GbE (metric 102 vs 20100) | Trafik non-storage jalan di jalur 10× lebih lambat | 🟠 Tinggi |
-| 10 | **Reproducibility tidak memenuhi SOP** — Conda tidak ada, tidak ada satu pun image `.sif`, Lmod tidak aktif | Versi tool tidak terkunci; hasil analisis sulit direproduksi | 🟠 Tinggi |
-| 11 | **1 dari 16 DIMM lebih lambat** (`2G9B1` @2933 di P0 CHANNEL C) → seluruh 1 TB turun ke 2933 MT/s | Kehilangan ±9% bandwidth memori. Perbaikan termurah: ganti satu modul | 🟠 Tinggi |
-| 12 | **`Tsa: Vulnerable: No microcode`** | Mitigasi Transient Scheduler Attack belum ada; perlu update microcode + BIOS | 🟠 Tinggi |
-| 13 | **`/mnt/scratch` 77% penuh** di RAID0 tanpa auto-purge | Mendekati penuh; 1 NVMe mati = 3.5 TB hilang | 🟡 Sedang |
-| 14 | **Slurm `TmpDisk=0`** — scratch 3.5 TB tidak terdaftar di scheduler | Job tidak bisa meminta ruang scratch; penjadwalan tidak sadar kapasitas disk | 🟡 Sedang |
-| 15 | **Path scratch beda dari standar repo** — `/mnt/scratch`, bukan `/scratch` | Script yang mengikuti README akan menulis ke path yang tidak ada | 🟡 Sedang |
-| 16 | **A100 SXM4 tidak ter-NVLink** (`topo` menunjukkan `NODE`, bukan `NV#`) | Job multi-GPU jalan di PCIe, jauh di bawah kemampuan SXM4. Perlu verifikasi fisik | 🟡 Sedang |
-| 17 | **GPU persistence mode Disabled** di ketiga GPU | Latensi inisialisasi tiap job, driver bisa unload-reload | 🟡 Sedang |
-| 18 | **CUDA Toolkit 12.0 vs driver CUDA 13.2** | Tidak bisa memakai fitur/optimasi CUDA terbaru | 🟡 Sedang |
-| 19 | **IP LAN dari DHCP** padahal dipakai sebagai `NodeAddr` di `slurm.conf` | IP berubah = node lepas dari cluster | 🟡 Sedang |
-| 20 | **Stack desktop lengkap di node compute** — GNOME, Firefox, VLC, CUPS, Xorg di ketiga GPU, 22 snap | Sumber daya dan permukaan serangan yang tidak perlu | 🟡 Sedang |
-| 21 | **`logrotate.service` failed** | Log tidak dirotasi — `/` bisa penuh perlahan | 🟡 Sedang |
-| 22 | **Serial & manufacturer DMI `To Be Filled By O.E.M.`** | Identitas aset tidak ada — wajib pakai asset tag fisik | 🟢 Rendah |
-| 23 | **BIOS P3.50 (2022-10-27)**, ± 4 tahun | Tertinggal perbaikan stabilitas & microcode | 🟢 Rendah |
-| 24 | **`NetworkManager-wait-online.service` failed** | Layanan yang butuh jaringan saat boot bisa start terlalu dini | 🟢 Rendah |
-| 25 | **RTX 5060 Ti tanpa ECC** dicampur dengan A100 dalam GRES yang sama | Job bisa mendarat di GPU tanpa ECC tanpa disadari | 🟢 Rendah |
+| 1 | **DIMM menuju gagal.** 1.045 event Correctable ECC dari sensor `Memory #0x0b` antara 2026-06-27 dan 2026-07-09, laju meningkat sampai ± 5 menit sekali (lihat [§2.5](#25-system-event-log-sel--🔴-perhatian-khusus)) | Pola khas DIMM menjelang gagal. Lanjutannya *uncorrectable error* = node crash mendadak di tengah job panjang. Slot belum teridentifikasi | 🔴 Kritis |
+| 2 | **SEL BMC penuh & overflow sejak 2026-07-09** (3.639 entri, 100%, `Overflow: true`) | BMC **tidak mencatat event hardware apa pun** selama ± 7 minggu terakhir. ECC, kegagalan PSU, thermal trip — semua hilang tanpa jejak | 🔴 Kritis |
+| 3 | **Tidak ada pemantauan ECC di sisi OS.** EDAC `ce_count=0` di kedua controller, `rasdaemon` & `mcelog` inactive, `ras-mc-ctl` tidak terpasang | Satu-satunya saksi error memori adalah BMC yang lognya sudah penuh. Tidak ada mekanisme apa pun yang akan memberi peringatan | 🔴 Kritis |
+| 4 | **Slurm dilewati.** Node `State=IDLE`, `CPUAlloc=0`, antrian kosong — tapi load 134.92 dengan 22 user login dan 4 sesi VS Code Remote | Scheduler buta terhadap beban nyata. Job `sbatch` berikutnya akan ditumpuk di atas mesin yang sudah penuh. Melanggar [SOP §standar eksekusi](../../docs/sop/sop-bioinformatics-execution.md) | 🔴 Kritis |
+| 5 | **Autentikasi SSH lemah.** `PermitRootLogin yes` + `PasswordAuthentication yes` di port 22, dan password root sangat lemah | Login root bisa ditebak. **Rotasi password root sekarang**, lalu matikan login password & root | 🔴 Kritis |
+| 6 | **Swap 8 GiB terpakai 100%** (sisa 12 MiB), `node0` cuma bebas 3.2 GB dari 515 GB | Node di ambang OOM. Job berikutnya berisiko dibunuh OOM killer, atau sistem thrashing | 🔴 Kritis |
+| 7 | **Disk OS SSD konsumer tanpa redundansi**, dengan riwayat throttling termal (Warning 1274 mnt, **Critical 15 mnt**) | ADATA LEGEND 800 mati = node tidak bisa boot. Riwayat suhu kritis memperbesar peluang gagal | 🔴 Kritis |
+| 8 | **Firewall mati** (`ufw inactive`, hanya chain Docker), sementara `pmcd`/`pmproxy` mendengarkan di `0.0.0.0` | Metrik sistem dan layanan terbuka ke seluruh LAN | 🟠 Tinggi |
+| 9 | **IPMI tanpa proteksi brute-force** — `Bad Password Threshold: 0`, cipher suite 0 aktif, SNMP community default `AMI`, VLAN disabled | BMC bisa digempur tanpa batas dari LAN yang sama dengan jaringan data | 🟠 Tinggi |
+| 10 | **Tiga jalur akses remote di luar SSH**: Tailscale, Cloudflare Tunnel, TeamViewer | Melewati firewall perimeter. Perlu audit siapa yang punya akses | 🟠 Tinggi |
+| 11 | **Dua mount NFS gagal** — `/mnt/t4-storage` dan `/media/t4-storage-nvme` | Data di kedua share tidak bisa diakses; pipeline yang mengacu ke path itu akan gagal | 🟠 Tinggi |
+| 12 | **Default route lewat 1 GbE**, bukan 10 GbE (metric 102 vs 20100) | Trafik non-storage jalan di jalur 10× lebih lambat | 🟠 Tinggi |
+| 13 | **Reproducibility tidak memenuhi SOP** — Conda tidak ada, tidak ada satu pun image `.sif`, Lmod tidak aktif | Versi tool tidak terkunci; hasil analisis sulit direproduksi | 🟠 Tinggi |
+| 14 | **1 dari 16 DIMM lebih lambat** (`2G9B1` @2933 di P0 CHANNEL C) → seluruh 1 TB turun ke 2933 MT/s | Kehilangan ±9% bandwidth memori. Perbaikan termurah: ganti satu modul | 🟠 Tinggi |
+| 15 | **`Tsa: Vulnerable: No microcode`** | Mitigasi Transient Scheduler Attack belum ada; perlu update microcode + BIOS | 🟠 Tinggi |
+| 16 | **`/mnt/scratch` 77% penuh** di RAID0 tanpa auto-purge | Mendekati penuh; 1 NVMe mati = 3.5 TB hilang | 🟡 Sedang |
+| 17 | **Slurm `TmpDisk=0`** — scratch 3.5 TB tidak terdaftar di scheduler | Job tidak bisa meminta ruang scratch; penjadwalan tidak sadar kapasitas disk | 🟡 Sedang |
+| 18 | **Path scratch beda dari standar repo** — `/mnt/scratch`, bukan `/scratch` | Script yang mengikuti README akan menulis ke path yang tidak ada | 🟡 Sedang |
+| 19 | **A100 SXM4 tidak ter-NVLink** (`topo` menunjukkan `NODE`, bukan `NV#`) | Job multi-GPU jalan di PCIe, jauh di bawah kemampuan SXM4. Perlu verifikasi fisik | 🟡 Sedang |
+| 20 | **GPU persistence mode Disabled** di ketiga GPU | Latensi inisialisasi tiap job, driver bisa unload-reload | 🟡 Sedang |
+| 21 | **CUDA Toolkit 12.0 vs driver CUDA 13.2** | Tidak bisa memakai fitur/optimasi CUDA terbaru | 🟡 Sedang |
+| 22 | **IP LAN dari DHCP** padahal dipakai sebagai `NodeAddr` di `slurm.conf` | IP berubah = node lepas dari cluster | 🟡 Sedang |
+| 23 | **Stack desktop lengkap di node compute** — GNOME, Firefox, VLC, CUPS, Xorg di ketiga GPU, 22 snap | Sumber daya dan permukaan serangan yang tidak perlu | 🟡 Sedang |
+| 24 | **`logrotate.service` failed** | Log tidak dirotasi — `/` bisa penuh perlahan | 🟡 Sedang |
+| 25 | **Serial & manufacturer DMI `To Be Filled By O.E.M.`** | Identitas aset tidak ada — wajib pakai asset tag fisik | 🟢 Rendah |
+| 26 | **BIOS P3.50 (2022-10-27)**, ± 4 tahun | Tertinggal perbaikan stabilitas & microcode | 🟢 Rendah |
+| 27 | **`NetworkManager-wait-online.service` failed** | Layanan yang butuh jaringan saat boot bisa start terlalu dini | 🟢 Rendah |
+| 28 | **RTX 5060 Ti tanpa ECC** dicampur dengan A100 dalam GRES yang sama | Job bisa mendarat di GPU tanpa ECC tanpa disadari | 🟢 Rendah |
+| 29 | **Tiga akun ADMINISTRATOR di BMC** — `admin`, `Administrator`, `fwupd`; dua terakhir bawaan pabrik | Digabung dengan `Bad Password Threshold: 0`, permukaan brute-force lebar. Pastikan password default sudah diganti atau akun dinonaktifkan | 🟠 Tinggi |
+| 30 | **`Power Restore Policy: always-off`** | Setelah listrik padam, node **tidak menyala sendiri** — harus dinyalakan manual di ruang server. Perpanjang downtime setiap kali PLN/UPS gagal | 🟡 Sedang |
+| 31 | **PSU tidak ter-instrumentasi** — semua sensor `TEMP_PSU*`, `PWR_PSU*`, `VOLT_PSU*_VIN`, `FAN_PSU*` `No Reading`; `dcmi power reading` 0 W | Redundansi PSU tidak bisa dikonfirmasi dari jarak jauh dan konsumsi daya tidak terpantau. Harus disurvei fisik | 🟡 Sedang |
 
 ---
 

@@ -40,6 +40,16 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `inventory/hpc-nodes/hpc-gpu.md` §2.1–§2.5 — **data dari BMC** (in-band `ipmitool`,
+  tanpa mengirim kredensial IPMI lewat jaringan): identitas chassis dari FRU,
+  daftar akun BMC, status chassis & daya, sensor suhu/fan, dan System Event Log.
+  Menemukan **serial board asli `BR80H7011500014`** yang di DMI masih kosong.
+- **Temuan kritis pada `HPC-GPU`** (§13 no. 1–3): 1.045 event Correctable ECC dari
+  satu sensor memori antara 2026-06-27 dan 2026-07-09 dengan laju meningkat;
+  SEL BMC penuh & overflow sejak 2026-07-09 sehingga event hardware berhenti
+  tercatat ± 7 minggu; dan tidak ada pemantauan ECC di sisi OS (EDAC `ce_count=0`,
+  `rasdaemon`/`mcelog` inactive) sehingga tidak ada mekanisme peringatan sama sekali.
+  Langkah perbaikan terlampir di §2.5.
 - `inventory/hpc-nodes/hpc-gpu.md` — **pendataan node komputasi**.
   ASRockRack ROME2D32GM-2T, 2× AMD EPYC 7763 (128C/256T), RAM 1 TB DDR4 ECC
   (16 channel terisi penuh), 2× NVIDIA A100-SXM4-40GB + 1× RTX 5060 Ti,
