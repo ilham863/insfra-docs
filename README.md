@@ -157,13 +157,15 @@ Legenda status: 🟢 Production · 🟡 Maintenance · 🔴 Down · ⚪ Decommis
 
 ### 4.1 Node yang teridentifikasi tapi belum didata
 
-Muncul dari konfigurasi node yang sudah didata, belum ada dokumennya:
+Hasil discovery jaringan 2026-08-28 — peta lengkap di
+[`inventory/network-map.md`](inventory/network-map.md):
 
-| Host | Peran | Ditemukan dari |
+| Host | Peran (dugaan) | Status akses |
 |---|---|---|
-| `pipeline` — `192.168.18.194` | Slurm controller (`slurmctld`) cluster `bioinfo` | `slurm.conf` di `HPC-GPU` |
-| `192.168.30.2` | Storage NFS — export `/bio-pool` (20 T) | mount aktif di `HPC-GPU` |
-| `192.168.18.113` | Storage NFS — export `/media/t4/96-Storage` | `fstab` di `HPC-GPU` (mount gagal) |
+| `192.168.18.193` | Server storage — NFS + SMB + Cockpit. Diduga sama dengan `192.168.30.2` (`/bio-pool` 20 TB) | 🔑 butuh kredensial |
+| `192.168.18.194` | `pipeline` — Slurm controller cluster `bioinfo` | 🔴 port 22 timeout |
+| `192.168.18.200` | Server web/aplikasi | 🔑 butuh kredensial · ⚠️ host key berubah |
+| `192.168.18.113` | Storage — export `/media/t4/96-Storage` di `fstab` `HPC-GPU` | 🔴 tidak merespons |
 
 > **Catatan penting:** arsitektur di §2 dan mapping storage di §3 adalah **desain
 > target**, bukan keadaan sekarang. Nama seperti `login-01`, `hpc-node-01..NN`,
@@ -193,6 +195,7 @@ Muncul dari konfigurasi node yang sudah didata, belum ada dokumennya:
 | `inventory/storage-nodes/` | Node storage/NAS *(belum ada isi)* |
 | `inventory/proxmox-nodes/` | Host hypervisor — berisi `proxmox.md` |
 | `scripts/` | Kolektor data inventaris (read-only, dijalankan via SSH) |
+| `inventory/network-map.md` | Peta jaringan & hasil discovery on-premise |
 | `docs/penginputan-node.md` | Panduan cara mendata & memperbarui node |
 | `docs/sop/` | Standard Operating Procedure |
 | `track-record/` | Riwayat operasional (maintenance & perubahan hardware) |
