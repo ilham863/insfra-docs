@@ -1,0 +1,405 @@
+# =============================================================================
+#  .gitignore — Bioinformatics Bare-Metal Infrastructure (Documentation Repo)
+# -----------------------------------------------------------------------------
+#  Repo ini HANYA untuk dokumentasi (.md), diagram, dan gambar.
+#  TIDAK BOLEH berisi data biologis, kredensial, atau log operasional.
+# =============================================================================
+
+
+# =============================================================================
+# 1. DATA BIOINFORMATICS — MUTLAK DILARANG
+#    Alasan: ukuran raksasa (GB–TB), dan sering mengandung data pasien/manusia
+#    yang tunduk pada aturan etik & privasi.
+# =============================================================================
+
+# --- Raw reads / sequencing ---
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.fasta
+*.fa
+*.fa.gz
+*.fna
+*.faa
+*.ffn
+*.bcl
+*.cbcl
+*.sra
+
+# --- Alignment ---
+*.sam
+*.bam
+*.bai
+*.cram
+*.crai
+*.pileup
+*.mpileup
+
+# --- Variant ---
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.gvcf
+*.g.vcf.gz
+*.bcf
+*.csi
+*.tbi
+
+# --- Anotasi / interval / genom ---
+*.bed
+*.bedGraph
+*.gff
+*.gff3
+*.gtf
+*.wig
+*.bigWig
+*.bw
+*.2bit
+*.dict
+*.chain
+
+# --- Index aligner (hasil build, bisa sangat besar) ---
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+*.ebwt
+*.bt2
+*.bt2l
+*.hisat2
+*.mmi
+*.nhr
+*.nin
+*.nsq
+*.gem
+
+# --- Expression / single-cell / matrix ---
+*.h5
+*.h5ad
+*.hdf5
+*.loom
+*.mtx
+*.rds
+*.RData
+*.rda
+*.npz
+
+# --- Direktori data yang tidak boleh masuk repo ---
+data/
+raw/
+raw_data/
+results/
+output/
+outputs/
+work/
+scratch/
+tmp_data/
+intermediate/
+alignments/
+variants/
+fastqc_out/
+multiqc_data/
+
+
+# =============================================================================
+# 2. CONTAINER & ENVIRONMENT IMAGE
+#    Alasan: image .sif bisa 1–20 GB. Yang di-commit HANYA definition file
+#    (.def / environment.yml), bukan binary hasil build-nya.
+# =============================================================================
+*.sif
+*.simg
+*.img
+*.squashfs
+*.sqsh
+*.tar
+*.tar.gz
+*.tgz
+*.qcow2
+*.raw
+*.vmdk
+*.vdi
+*.iso
+
+# Pengecualian — definition file WAJIB di-commit
+!*.def
+!Singularity
+!Singularity.*
+!Dockerfile
+!environment.yml
+!environment.yaml
+
+
+# =============================================================================
+# 3. KREDENSIAL & SECRET — RISIKO KEAMANAN TERTINGGI
+#    Jika salah satu ini pernah ter-commit: ROTASI kredensialnya dulu,
+#    baru bersihkan git history.
+# =============================================================================
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+*.gpg
+*.asc
+*.ovpn
+*.kubeconfig
+
+# SSH
+id_rsa
+id_rsa.*
+id_dsa
+id_dsa.*
+id_ecdsa
+id_ecdsa.*
+id_ed25519
+id_ed25519.*
+known_hosts
+authorized_keys
+.ssh/
+
+# Environment & config berisi rahasia
+.env
+.env.*
+!.env.example
+!.env.template
+*.env
+secrets.*
+secret.*
+credentials
+credentials.*
+*credential*
+*password*
+*secret*
+*token*
+.netrc
+.pgpass
+.my.cnf
+.htpasswd
+vault.yml
+vault.yaml
+ansible-vault.*
+
+# Kredensial spesifik infrastruktur
+ipmi-*.conf
+idrac-*.conf
+racadm-*.txt
+redfish-*.json
+smb-credentials
+cifs-credentials
+*.smbcredentials
+
+
+# =============================================================================
+# 4. LOG & OUTPUT OPERASIONAL
+#    Log tidak di-commit; yang di-commit adalah RINGKASANNYA di file .md.
+# =============================================================================
+*.log
+*.log.*
+*.out
+*.err
+*.trace
+logs/
+log/
+nohup.out
+
+# Output scheduler
+slurm-*.out
+slurm-*.err
+*.o[0-9]*
+*.e[0-9]*
+*.po[0-9]*
+*.pe[0-9]*
+job-*.out
+job-*.err
+.snakemake/
+.nextflow/
+.nextflow.log*
+work/
+trace.txt
+timeline.html
+report.html
+dag.dot
+
+# Dump & core
+core
+core.*
+*.core
+vmcore*
+*.dmp
+*.stackdump
+*.crash
+
+
+# =============================================================================
+# 5. BACKUP, ARSIP, & FILE SEMENTARA SYSADMIN
+# =============================================================================
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+*.save
+*.swp
+*.swo
+*.swn
+*~
+.#*
+\#*\#
+*.tmp
+*.temp
+*.lock
+*.pid
+*.sock
+*.zip
+*.7z
+*.rar
+*.gz
+*.bz2
+*.xz
+*.zst
+
+# Pengecualian: dokumentasi terkompresi yang memang sengaja disimpan
+!docs/**/*.gz
+
+
+# =============================================================================
+# 6. DUMP KONFIGURASI MENTAH
+#    Boleh di-paste sebagian ke dalam .md, tapi file mentahnya jangan di-commit
+#    karena sering mengandung MAC address, serial, atau hostname internal penuh.
+# =============================================================================
+dmidecode-*.txt
+lshw-*.txt
+lspci-*.txt
+sosreport-*
+supportconfig-*
+*.sosreport
+tsr-*.zip
+*.dset
+smartctl-*.txt
+megacli-*.txt
+storcli-*.txt
+zpool-status-*.txt
+*.dump
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+
+
+# =============================================================================
+# 7. EDITOR & IDE
+# =============================================================================
+.vscode/
+!.vscode/settings.json.example
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+.history/
+.vim/
+.netrwhist
+nvim-session*
+tags
+TAGS
+cscope.*
+
+
+# =============================================================================
+# 8. OS ARTIFACT
+# =============================================================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.fuse_hidden*
+.nfs*
+
+
+# =============================================================================
+# 9. PYTHON / CONDA / R (kalau ada script pembantu di repo)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-meta/
+envs/
+pip-log.txt
+.Python
+.ipynb_checkpoints/
+.Rhistory
+.RData
+.Rproj.user/
+renv/library/
+.rstudio-desktop/
+
+
+# =============================================================================
+# 10. GAMBAR BERUKURAN BESAR
+#     Gambar dokumentasi WAJIB dikompres < 2 MB.
+#     File mentah kamera / desain simpan di drive terpisah, bukan di repo.
+# =============================================================================
+*.psd
+*.ai
+*.sketch
+*.fig
+*.xcf
+*.tiff
+*.tif
+*.bmp
+*.heic
+*.mov
+*.mp4
+*.avi
+*.mkv
+*.raw
+*.cr2
+*.nef
+*.arw
+
+
+# =============================================================================
+# 11. PENGECUALIAN GLOBAL — file yang WAJIB tetap masuk repo
+# =============================================================================
+!.gitignore
+!.gitattributes
+!.gitkeep
+!**/.gitkeep
+!README.md
+!CHANGELOG.md
+!**/*.md
+!assets/images/**/*.png
+!assets/images/**/*.jpg
+!assets/images/**/*.jpeg
+!assets/images/**/*.svg
+!assets/images/**/*.webp
+!assets/images/**/*.drawio
