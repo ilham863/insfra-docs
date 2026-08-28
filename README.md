@@ -146,13 +146,23 @@ Detail lengkap prosedur ada di [`docs/sop/sop-bioinformatics-execution.md`](docs
 
 ## 4. Index Node
 
-| Node | Tipe | Dokumentasi | Status |
-|---|---|---|---|
-| `hpc-node-01` | Bare-metal Compute (GPU) | [inventory/hpc-nodes/hpc-node-01.md](inventory/hpc-nodes/hpc-node-01.md) | 🟢 Production |
-| `storage-node-01` | Bare-metal Storage (ZFS) | [inventory/storage-nodes/storage-node-01.md](inventory/storage-nodes/storage-node-01.md) | 🟢 Production |
-| `proxmox-node-01` | Bare-metal Hypervisor | [inventory/proxmox-nodes/proxmox-node-01.md](inventory/proxmox-nodes/proxmox-node-01.md) | 🟢 Production |
+Node yang **sudah terdata dengan data asli**:
+
+| Node | Tipe | IP | Dokumentasi | Status |
+|---|---|---|---|---|
+| `proxmox` | Bare-metal Hypervisor (PVE 9.2) | `192.168.18.190` | [inventory/proxmox-nodes/proxmox.md](inventory/proxmox-nodes/proxmox.md) | 🟢 Production |
 
 Legenda status: 🟢 Production · 🟡 Maintenance · 🔴 Down · ⚪ Decommissioned · 🔵 Staging
+
+> **Catatan penting:** arsitektur di §2 dan mapping storage di §3 adalah **desain
+> target** — node `login-01`, `hpc-node-01..NN`, dan `storage-node-01` di sana
+> belum ada wujud fisiknya / belum didata. Satu-satunya node yang sudah terdata
+> adalah `proxmox`, dan node itu saat ini merangkap tiga peran sekaligus
+> (hypervisor + arsip 140 TB + target backup).
+>
+> Kerangka dokumen untuk tipe node lain ada di
+> [`inventory/_templates/`](inventory/_templates/) — isinya contoh, bukan server nyata.
+> Cara mendata node baru: [`docs/penginputan-node.md`](docs/penginputan-node.md).
 
 ---
 
@@ -164,11 +174,14 @@ Legenda status: 🟢 Production · 🟡 Maintenance · 🔴 Down · ⚪ Decommis
 | `CHANGELOG.md` | Riwayat versi **dokumentasi** (Keep a Changelog) |
 | `.gitignore` | Rule ignore data biologis, kredensial, log |
 | `inventory/` | Spesifikasi **hardware fisik** per unit bare-metal |
-| `inventory/hpc-nodes/` | Node compute |
-| `inventory/storage-nodes/` | Node storage/NAS |
-| `inventory/proxmox-nodes/` | Host hypervisor |
-| `track-record/` | Riwayat operasional (maintenance & perubahan hardware) |
+| `inventory/_templates/` | **Kerangka/contoh** dokumen node — disalin, tidak diedit |
+| `inventory/hpc-nodes/` | Node compute *(belum ada isi)* |
+| `inventory/storage-nodes/` | Node storage/NAS *(belum ada isi)* |
+| `inventory/proxmox-nodes/` | Host hypervisor — berisi `proxmox.md` |
+| `scripts/` | Kolektor data inventaris (read-only, dijalankan via SSH) |
+| `docs/penginputan-node.md` | Panduan cara mendata & memperbarui node |
 | `docs/sop/` | Standard Operating Procedure |
+| `track-record/` | Riwayat operasional (maintenance & perubahan hardware) |
 | `assets/images/` | Foto rak, diagram, screenshot |
 
 **Beda `CHANGELOG.md` vs `track-record/server-changelog.md`:**
@@ -288,7 +301,9 @@ dari lokasi file `.md` yang memanggilnya.
 | File `.md` berada di | Prefix yang dipakai |
 |---|---|
 | Root (`README.md`, `CHANGELOG.md`) | `assets/images/...` |
+| `docs/` | `../assets/images/...` |
 | `docs/sop/` | `../../assets/images/...` |
+| `inventory/_templates/` | `../../assets/images/...` |
 | `inventory/hpc-nodes/` | `../../assets/images/...` |
 | `inventory/storage-nodes/` | `../../assets/images/...` |
 | `inventory/proxmox-nodes/` | `../../assets/images/...` |
@@ -331,22 +346,27 @@ Standar penamaan file lengkap: [assets/images/README.md](assets/images/README.md
 
 ## 8. Cara Cepat Menambah Node Baru
 
+Prosedur lengkap ada di **[`docs/penginputan-node.md`](docs/penginputan-node.md)**.
+Ringkasnya:
+
 ```bash
-# HPC node baru
-cp inventory/hpc-nodes/hpc-node-01.md inventory/hpc-nodes/hpc-node-03.md
+# 1. Kumpulkan data dari server (read-only, tidak mengubah apa pun)
+bash scripts/collect-proxmox.sh <ip> root ~/.ssh/<key> > /tmp/pve-$(date +%F).txt
 
-# Storage node baru
-cp inventory/storage-nodes/storage-node-01.md inventory/storage-nodes/storage-node-02.md
-
-# Proxmox host baru
-cp inventory/proxmox-nodes/proxmox-node-01.md inventory/proxmox-nodes/proxmox-node-02.md
+# 2. Salin template — JANGAN edit file di _templates/
+cp inventory/_templates/proxmox-node.template.md inventory/proxmox-nodes/<hostname>.md
+cp inventory/_templates/hpc-node.template.md     inventory/hpc-nodes/<hostname>.md
+cp inventory/_templates/storage-node.template.md inventory/storage-nodes/<hostname>.md
 ```
 
 Lalu:
-1. Ganti semua nilai di tabel identitas (hostname, serial, asset tag, RU, IPMI IP).
-2. Tambahkan barisnya ke tabel **Index Node** di `README.md` ini.
-3. Catat penambahan di `track-record/server-changelog.md`.
-4. Tambahkan entri di `CHANGELOG.md` bagian `[Unreleased] → Added`.
+1. Isi dokumen dari output kolektor. Nama file = **hostname asli** (`hostname -f`),
+   bukan nomor urut karangan.
+2. Field yang tidak terbaca lewat SSH (rak, RU, PDU, PSU, garansi) **disurvei fisik**.
+   Yang belum diketahui ditulis `*(isi)*`, jangan dikosongkan.
+3. Tambahkan barisnya ke tabel **Index Node** di §4 README ini.
+4. Catat perubahan fisik di `track-record/server-changelog.md`.
+5. Tambahkan entri di `CHANGELOG.md` bagian `[Unreleased]`.
 
 ---
 
