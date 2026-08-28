@@ -40,6 +40,18 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `inventory/hpc-nodes/hpc-gpu.md` — **pendataan node komputasi**.
+  ASRockRack ROME2D32GM-2T, 2× AMD EPYC 7763 (128C/256T), RAM 1 TB DDR4 ECC
+  (16 channel terisi penuh), 2× NVIDIA A100-SXM4-40GB + 1× RTX 5060 Ti,
+  scratch RAID0 4× NVMe 3.5 TB, Ubuntu 24.04.4 LTS. Terdaftar di Slurm cluster
+  `bioinfo` sebagai `compute001`. Mencakup 25 temuan Known Issues terprioritas.
+  Data dikumpulkan otomatis via SSH pada 2026-08-28.
+- `scripts/collect-hpc.sh` — kolektor inventaris node HPC (Ubuntu bare-metal),
+  seluruhnya read-only: GPU (`nvidia-smi`), Slurm, mdadm/NVMe + wear indicator,
+  mount NFS, stack software, agen monitoring, dan hardening dasar.
+- `README.md` §4.1 — daftar node yang teridentifikasi dari konfigurasi node lain
+  tapi belum didata: `pipeline` (`192.168.18.194`, Slurm controller),
+  `192.168.30.2` dan `192.168.18.113` (storage NFS).
 - `inventory/proxmox-nodes/proxmox.md` — **pendataan node asli pertama**.
   Host Supermicro H12SSL-I / AMD EPYC 7B13 (64C/128T), RAM 256 GB DDR4-3200 ECC,
   Proxmox VE 9.2.10 di Debian 13. Mencakup 13 disk fisik lengkap dengan serial &
