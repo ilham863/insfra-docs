@@ -40,6 +40,25 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` — **dokumen VM 101, host SMRT Link
+  untuk sekuenser PacBio Vega**. Memuat topologi lengkap (internet → ONT → Zyxel →
+  proxmox → VM → instrumen), alur data & alur internet Vega, spesifikasi VM,
+  layout storage, standar konfigurasi dalam VM (netplan + `ip_forward` + `nftables`
+  NAT/isolasi), catatan SMRT Link, jalur akses HPC beserta dua ganjalannya,
+  9 temuan risiko, dan checklist penerapan.
+- **Storage PVE baru di `PROXMOX-2U`** — menutup temuan lama bahwa `zfs-storage`
+  (140 TB) tidak terdaftar di Proxmox:
+  - **`vm-hdd`** — `zfspool` di `zfs-storage/vm-disks`, quota **10 TiB**,
+    `sparse`, `blocksize 64k` (memangkas padding raidz2 dibanding default 16k).
+  - **`pve-backup`** — `dir` di `zfs-storage/backup`, quota **20 TiB**, content
+    `backup`, retensi 7 harian / 4 mingguan / 3 bulanan. **Ini target `vzdump`
+    pertama yang pernah ada di node ini.**
+- **Bridge `vmbr1`** di `nic1` (port Broadcom kedua yang selama ini menganggur),
+  **sengaja tanpa IP di host** — segmen khusus instrumen PacBio Vega, dengan
+  VM 101 sebagai gateway/NAT. Backup config lama di `/etc/network/interfaces.bak-2026-09-02`.
+- **VM 101 `ubuntu24-desktop`** — 32 vCPU, 64 GiB RAM (ballooning off), UEFI/q35,
+  SSD 1000 GiB + EFI di `nvme-scratch`, HDD 7,81 TiB di `vm-hdd`, dua NIC
+  (`vmbr0` untuk LAN/HPC, `vmbr1` untuk Vega).
 - `inventory/network-devices/zyxel-switch.md` — **didata penuh lewat CLI switch**
   (Telnet, perintah `show` saja). Model **ZyXEL MGS3520-28FX**, serial
   `S175852000302`, firmware `V1.06(ABGV.0)b1` **compiled 2019-08-07**, 28 port,
@@ -167,6 +186,12 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - *(belum ada)*
 
 ### Fixed
+- `inventory/proxmox-nodes/proxmox.md` — diselaraskan dengan keadaan setelah
+  perubahan: §3.3 (`nic1` kini slave `vmbr1`, baris `vmbr1` ditambahkan), §7.3
+  (storage `vm-hdd` & `pve-backup`, plus catatan bahwa `vega-storage` kini jadi
+  sisa yang bisa dihapus), §8.1 (VM 300 diganti VM 101), §8.3 (alokasi jadi
+  80 vCPU dari 128), dan §12 (temuan #9 **selesai**, temuan #1 sebagian tertangani).
+  Blok header yang sebelumnya tersela catatan VM 300 juga dirapikan.
 - `inventory/network-map.md` §3 — **koreksi enam kesimpulan discovery 2026-08-28
   yang terbukti keliru**: `192.168.18.200` bukan "server web/aplikasi" melainkan
   **BMC Supermicro milik `T4-Storage`**; `192.168.18.250` bukan "appliance/printer"

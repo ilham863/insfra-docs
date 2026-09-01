@@ -506,7 +506,7 @@ Perangkat jaringan — **keduanya sama kritisnya dengan server**:
 | `inventory/_templates/` | **Kerangka/contoh** dokumen node — disalin, tidak diedit |
 | `inventory/hpc-nodes/` | Node compute — berisi `hpc-gpu.md` |
 | `inventory/storage-nodes/` | Node storage/NAS — berisi `t4-storage.md` |
-| `inventory/proxmox-nodes/` | Host hypervisor — berisi `proxmox.md` |
+| `inventory/proxmox-nodes/` | Host hypervisor — `proxmox.md` + `vm-101-smrtlink.md` |
 | `inventory/network-devices/` | **Perangkat jaringan** — switch Zyxel & ONT Huawei |
 | `scripts/` | Kolektor data inventaris (read-only, dijalankan via SSH) |
 | `inventory/network-map.md` | Peta jaringan & hasil discovery on-premise |
