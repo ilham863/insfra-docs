@@ -3,7 +3,7 @@
 Log seluruh perubahan **permanen** pada hardware, sistem operasi, dan konfigurasi
 jaringan/keamanan di infrastruktur bare-metal.
 
-> **Terakhir Diperbarui:** 2026-08-28
+> **Terakhir Diperbarui:** 2026-09-02
 >
 > **Beda dengan dokumen lain:**
 > - File ini = **apa yang berubah secara permanen** pada server (hardware, OS, network).
@@ -102,6 +102,7 @@ dari nilai apa ke nilai apa, kenapa, siapa, dan apa dampaknya.
 
 | ID | Tanggal | Node | Kategori | Ringkasan | MNT Terkait |
 |---|---|---|---|---|---|
+| `SCL-2026-008` | ⚠️ *(tidak diketahui)* | **`T4-Storage`** | `NET-CONFIG` | IP manajemen `192.168.18.113` → `192.168.18.193` — **perubahan tidak tercatat**, memutus `fstab` `HPC-GPU` & seluruh job Prometheus | — |
 | `SCL-2026-007` | 2026-06-22 | `hpc-node-01` | `HW-NIC`, `NET-CONFIG` | 10GbE → dual 25GbE LACP, MTU 9000 | `MNT-2026-011` |
 | `SCL-2026-006` | 2026-06-14 | `storage-node-01` | `OS-DRIVER` | OpenZFS 2.1.15 → 2.2.4, `autotrim=on` | `MNT-2026-010` |
 | `SCL-2026-005` | 2026-05-06 | `proxmox-node-01` | `SEC-CHANGE` | Aktifkan TOTP 2FA, firewall `policy_in DROP` | `MNT-2026-009` |
@@ -124,6 +125,72 @@ dari nilai apa ke nilai apa, kenapa, siapa, dan apa dampaknya.
 ---
 
 ## Riwayat Lengkap
+
+### SCL-2026-008 — Perpindahan IP Manajemen T4-Storage (rekonstruksi retroaktif)
+
+> ⚠️ **Entri ini disusun ulang setelah kejadian**, saat pendataan `T4-Storage`
+> pada 2026-09-02. Perubahannya sendiri **tidak pernah dicatat** ketika terjadi —
+> justru itulah yang membuatnya berbahaya. Field yang tidak bisa direkonstruksi
+> ditandai *(isi)* dan **wajib dilengkapi oleh yang mengerjakan**.
+
+| Field | Isi |
+|---|---|
+| **ID** | `SCL-2026-008` |
+| **Tanggal Efektif** | ⚠️ *(isi — hanya diketahui: sebelum 2026-08-28)* |
+| **Node Terdampak** | `t4-Super-Server` / **T4-Storage** (Asset Tag *(isi)*) |
+| **Kategori** | `NET-CONFIG` |
+| **Tiket Maintenance Terkait** | — *(tidak ada)* |
+| **PIC** | *(isi)* |
+| **Disetujui Oleh** | *(isi)* |
+| **Reversibel?** | Ya |
+
+**Perubahan:**
+
+| Item | Sebelum | Sesudah |
+|---|---|---|
+| IP manajemen (`eno1`) | `192.168.18.113` | **`192.168.18.193`** |
+| IP jalur data (`enp65s0f0`) | `192.168.30.2` | `192.168.30.2` *(tidak berubah)* |
+| BMC | `192.168.18.200` | `192.168.18.200` *(tidak berubah)* |
+
+**Alasan:**
+*(isi — belum diketahui)*
+
+**Dampak pada operasional — semuanya gagal diam-diam, tanpa satu pun alarm:**
+
+| Yang terputus | Akibat | Terdeteksi |
+|---|---|---|
+| `/etc/fstab` di `HPC-GPU` → `192.168.18.113:/media/t4/96-Storage` | Mount `/mnt/t4-storage` **failed** | 2026-08-28 (tanpa diketahui sebabnya) |
+| 4 job Prometheus di `T4-Storage` → `192.168.18.113:{9100,9290,9400,9633}` | **Seluruh monitoring fleet mati** | **2026-09-02** |
+| Alarm SMART | Disk `/dev/sdj` **SMART FAILED** lolos tanpa terdeteksi | **2026-09-02** |
+
+**Dokumen yang ikut diperbarui:**
+- [x] `inventory/storage-nodes/t4-storage.md` (§7, §8.1, `KI-T03`, `KI-T11`)
+- [x] `inventory/hpc-nodes/hpc-gpu.md` (§7.2, §14)
+- [x] `inventory/network-map.md` (§3, §7, §8)
+- [x] `README.md` (§4 index node)
+- [x] `CHANGELOG.md`
+- [ ] `/etc/fstab` di `HPC-GPU` — **belum diperbaiki**
+- [ ] `/etc/prometheus/prometheus.yml` di `T4-Storage` — **belum diperbaiki**
+
+**Verifikasi:**
+```
+$ showmount -e 192.168.18.193          # dijalankan dari proxmox, 2026-09-02
+/bio-pool            192.168.30.0/24
+/media/t4/NVME-3.6TB 192.168.30.0/24
+/media/t4/96-Storage 192.168.18.0/24
+
+$ curl -s http://192.168.18.193:9090/api/v1/targets?state=active
+  ... "instance":"192.168.18.113:9100" ... "health":"down"      # keempat job masih menunjuk IP lama
+```
+
+**Catatan:**
+Perubahan alamat IP terlihat sepele, tapi di sini ia memutus tiga integrasi
+sekaligus — dan yang paling parah, **memutus sistem yang seharusnya memberi tahu
+kita bahwa ada yang putus**. Setiap perubahan IP ke depan **wajib** disertai
+pengecekan: `fstab` di semua klien, target Prometheus, `slurm.conf`, dan
+`/etc/exports`.
+
+---
 
 ### SCL-2026-007 — Upgrade Jaringan hpc-node-01 ke Dual 25GbE LACP
 
