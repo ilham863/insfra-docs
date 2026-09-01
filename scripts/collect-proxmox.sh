@@ -70,6 +70,20 @@ for d in /dev/sd? /dev/nvme?n1; do
 		grep -Ei 'Model|Serial|Capacity|Rotation|health|Firmware'
 done
 
+sec "PCI"
+run lspci -nn
+echo "--- \$ perangkat penting + driver ---"
+lspci -nnk 2>/dev/null | grep -A3 -Ei 'ethernet|network|3d controller|vga compatible|non-volatile|raid bus|fibre channel'
+echo "--- \$ okupansi slot PCIe ---"
+dmidecode -t slot 2>/dev/null | grep -E 'Designation:|Type:|Current Usage:|Bus Address:'
+echo "--- \$ GPU ---"
+if command -v nvidia-smi >/dev/null 2>&1; then
+	nvidia-smi --query-gpu=name,memory.total,driver_version,pci.bus_id --format=csv 2>&1
+else
+	echo "nvidia-smi tidak terpasang di host"
+	lspci -nnk 2>/dev/null | grep -A3 -Ei '3d controller|vga compatible' || echo "(tidak ada GPU terdeteksi)"
+fi
+
 sec "PVE-VERSION"
 run pveversion -v
 run uname -a
@@ -87,10 +101,20 @@ run ip route
 echo "--- \$ resolv.conf ---"; grep -v '^#' /etc/resolv.conf 2>/dev/null
 echo "--- \$ speed/mac/mtu per-nic ---"
 for i in $(ls /sys/class/net | grep -Ev '^(lo|veth|tap|fw|bonding_masters)'); do
-	printf '%-10s speed=%-8s mac=%-18s mtu=%s\n' \
+	drv=$(basename "$(readlink -f /sys/class/net/$i/device/driver 2>/dev/null)" 2>/dev/null)
+	if [ -e "/sys/class/net/$i/device" ]; then
+		case "$(readlink -f /sys/class/net/$i/device)" in
+			*usb*) bus=USB ;;
+			*)     bus=PCI ;;
+		esac
+	else
+		bus=virtual
+	fi
+	printf '%-10s speed=%-8s mac=%-18s mtu=%-6s driver=%-12s bus=%s\n' \
 		"$i" "$(cat /sys/class/net/$i/speed 2>/dev/null)" \
 		"$(cat /sys/class/net/$i/address 2>/dev/null)" \
-		"$(cat /sys/class/net/$i/mtu 2>/dev/null)"
+		"$(cat /sys/class/net/$i/mtu 2>/dev/null)" \
+		"${drv:-none}" "$bus"
 done
 run brctl show
 
