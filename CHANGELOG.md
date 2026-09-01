@@ -40,6 +40,22 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `inventory/network-devices/zyxel-switch.md` — **didata penuh lewat CLI switch**
+  (Telnet, perintah `show` saja). Model **ZyXEL MGS3520-28FX**, serial
+  `S175852000302`, firmware `V1.06(ABGV.0)b1` **compiled 2019-08-07**, 28 port,
+  uptime 40 hari, suhu 27,9 °C, modul daya **AC tunggal**. Memuat peta port ↔
+  perangkat yang diverifikasi dari **MAC address table**, konfigurasi VLAN, dan
+  status jumbo frame.
+- **Tiga blocker rencana ingress terjawab dan semuanya hijau:**
+  **(1)** `e0/0/25` & `e0/0/27` **kosong** — cukup untuk `PROXMOX-2U` plus satu cadangan;
+  **(2)** jumbo frame **aktif, MTU 10248 di seluruh port**;
+  **(3)** **VLAN 30 `SERVERS` sudah ada** (`e0/0/26`, `e0/0/28`), port proxmox tinggal dimasukkan.
+- **Temuan arsitektural — BMC berbagi port fisik dengan host (NC-SI shared LAN).**
+  Tabel MAC membuktikan `e0/0/3` membawa MAC host proxmox **dan** MAC BMC-nya
+  sekaligus; pola sama di `e0/0/2` (`HPC-GPU`) dan `e0/0/4` (`T4-Storage`).
+  **Konsekuensinya: BMC tidak bisa dipisahkan ke VLAN lain dengan memindahkan
+  kabel** — harus set VLAN 802.1q di dalam tiap BMC **dan** ubah port switch jadi
+  trunk. Rekomendasi di README §2.6 sudah dikoreksi mengikuti temuan ini.
 - `inventory/network-devices/` — **kategori baru: perangkat jaringan**, karena switch
   dan ONT terbukti sama kritisnya dengan server:
   - `zyxel-switch.md` — **switch inti `192.168.18.250`** (MAC `1C:74:0D:FF:DA:64`).
@@ -179,10 +195,21 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - 🔴 **Monitoring seluruh fleet tidak berfungsi** — keempat job Prometheus masih
   menunjuk IP lama `192.168.18.113` dan berstatus `down`, sehingga tidak ada alarm
   yang berbunyi. Inilah sebabnya disk `/dev/sdj` yang SMART FAILED tidak ketahuan.
-- 🔴 **Switch Zyxel `192.168.18.250` tidak punya satu pun jalur manajemen
-  terenkripsi** — hanya Telnet (`23`) dan HTTP (`80`), keduanya plaintext; tanpa
-  SSH, tanpa HTTPS. `SNMP 161/udp` juga terbuka. Kredensial admin switch bisa
-  disadap dari LAN, dan pemegangnya menguasai seluruh jaringan.
+- 🔴 **Password admin switch Zyxel masih default pabrik** — terkonfirmasi bisa
+  login. Pemegang switch dapat menyadap seluruh trafik lewat port mirroring,
+  memindahkan VLAN, atau memutus seluruh jaringan. **Wajib diganti.**
+- 🔴 **Switch Zyxel tidak punya satu pun jalur manajemen terenkripsi** — hanya
+  Telnet (`23`) dan HTTP (`80`), keduanya plaintext; tanpa SSH, tanpa HTTPS.
+  Login web bahkan POST polos ke `/goform/SetLogin` tanpa hashing maupun token
+  CSRF, jadi mengganti password saja tidak cukup — kredensial barunya tetap bisa
+  disadap dari LAN.
+- 🟠 **Firmware switch `V1.06(ABGV.0)b1` compiled 2019-08-07** (± 7 tahun) —
+  perlu dicek CVE untuk MGS3520.
+- ✅ **SNMP switch ternyata aman** — port `161/udp` merespons probe, tapi
+  `show snmp community` **kosong**, jadi tidak ada data yang bisa ditarik tanpa
+  autentikasi. Lebih baik daripada dugaan awal.
+- 🟠 **Perangkat tak dikenal `50:e9:71:03:26:8a`** berbagi port `e0/0/1` dengan ONT —
+  ada host tak teridentifikasi di segmen yang sama dengan seluruh server dan BMC.
 - 🔴 **Seluruh infrastruktur bergantung pada satu switch tanpa redundansi** —
   internet, LAN server, jalur data 10 GbE, dan ketiga BMC semuanya lewat
   `192.168.18.250`. Switch mati = semuanya mati serentak.

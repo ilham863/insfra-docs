@@ -67,34 +67,34 @@ dan **satu ONT** dari ISP. Bagian ini memuat empat hal yang sengaja dipisah:
                               └───────────┬────────────┘
                                           │  LAN / RJ45 1 GbE
                                           ▼
-        ╔═════════════════════════════════════════════════════════════════╗
-        ║                       ZYXEL SWITCH                              ║
-        ║              192.168.18.250 · 1C:74:0D:FF:DA:64                 ║
-        ║   ┌──────────────────────────┬──────────────────────────────┐   ║
-        ║   │   PORT RJ45  (1 GbE)     │      PORT SFP+  (10 GbE)     │   ║
-        ║   └──────────────────────────┴──────────────────────────────┘   ║
-        ║   🔴 SPOF ABSOLUT — semua trafik lewat sini, tanpa redundansi    ║
-        ╚══╤═══════════╤═══════════╤═══════════╤══════════╤══════════╤════╝
-           │           │           │           │          │          │
-     RJ45 1GbE   RJ45 1GbE   RJ45 1GbE    RJ45 1GbE   SFP+ 10G   SFP+ 10G
-           │           │           │           │          │          │
-           ▼           ▼           ▼           ▼          ▼          ▼
-    ┌────────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐ ┌────────┐ ┌────────┐
-    │ T4-STORAGE │ │PROXMOX-2U│ │ HPC-GPU │ │3× BMC │ │  T4-   │ │  HPC-  │
-    │   .18.193  │ │ .18.190  │ │ .18.178 │ │ .200  │ │STORAGE │ │  GPU   │
-    │            │ │          │ │         │ │ .13   │ │.30.2   │ │ .30.3  │
-    │ 41 disk    │ │140TB ZFS │ │2× A100  │ │ .119  │ │        │ │        │
-    │ 424 TB raw │ │raidz2    │ │128C/256T│ │       │ └───┬────┘ └───┬────┘
-    │ Prometheus │ │2× TeslaT4│ │1 TB RAM │ │  ⚠️   │     │          │
-    │ Grafana    │ │PVE 9.2   │ │scratch  │ │ tanpa │     └────NFS───┘
-    └────────────┘ └──────────┘ └─────────┘ │ VLAN  │      10 GbE
-                        ▲                   └───────┘   192.168.30.0/24
-                        │                                  MTU 9000
-              ⚠️ TIDAK punya port SFP+
-                 — hanya 1 GbE
+   ╔═══════════════════════════════════════════════════════════════════════════╗
+   ║           ZYXEL MGS3520-28FX   ·   192.168.18.250   ·   S175852000302     ║
+   ║        firmware V1.06 (2019) · MTU 10248 (jumbo ON) · PSU tunggal AC      ║
+   ║   🔴 SPOF ABSOLUT — semua trafik lewat sini · password masih default       ║
+   ╚═╤═════════╤═════════╤═════════╤══════════════════╤═════════╤═════════╤════╝
+    e0/0/1    e0/0/2    e0/0/3    e0/0/4          e0/0/25   e0/0/26   e0/0/28
+    1 GbE     1 GbE     1 GbE     1 GbE            SFP+      SFP+      SFP+
+    VLAN 1    VLAN 1    VLAN 1    VLAN 1          KOSONG   VLAN 30   VLAN 30
+      │         │         │         │                │        │         │
+      │         │         │         │          ⭐ untuk       │         │
+      │         │         │         │           PROXMOX       │         │
+      ▼         ▼         ▼         ▼                         ▼         ▼
+  ┌───────┐ ┌───────┐ ┌────────┐ ┌──────────┐          ┌─────────┐ ┌────────┐
+  │  ONT  │ │HPC-GPU│ │PROXMOX │ │T4-STORAGE│          │   T4-   │ │ HPC-   │
+  │ .18.1 │ │.18.178│ │ .18.190│ │  .18.193 │          │ STORAGE │ │  GPU   │
+  │       │ │  +BMC │ │  +BMC  │ │   +BMC   │          │ .30.2   │ │ .30.3  │
+  │  + ?  │ │  .119 │ │  .13   │ │   .200   │          └────┬────┘ └───┬────┘
+  └───────┘ └───────┘ └────────┘ └──────────┘               │          │
+      ▲         ▲         ▲          ▲                      └───NFS────┘
+      │         └─────────┴──────────┘                        10 GbE
+   perangkat    🔴 BMC BERBAGI PORT dengan host            MTU 9000
+   tak dikenal     (NC-SI) — tidak bisa dipisah
+   50:e9:71:..     dengan memindahkan kabel
 
-    ═══ LAN SERVER 192.168.18.0/24 ═══   semua server + SEMUA BMC, satu segmen
-    ═══ JALUR DATA 192.168.30.0/24  ═══   hanya T4-Storage ↔ HPC-GPU
+   Port kosong: e0/0/5–e0/0/24 (20× 1 GbE) · e0/0/25, e0/0/27 (2× SFP+ 10 GbE)
+
+    ═══ VLAN 1  192.168.18.0/24 ═══  semua server + SELURUH BMC + ONT, satu segmen
+    ═══ VLAN 30 "SERVERS" .30.0/24 ═══  jalur data, hanya e0/0/26 & e0/0/28
 
     Akses admin jarak jauh:  ☁ Cloudflare Zero Trust (WARP) → LAN server
                              ⚠️ lokasi connector belum teridentifikasi
@@ -102,8 +102,10 @@ dan **satu ONT** dari ISP. Bagian ini memuat empat hal yang sengaja dipisah:
 
 | Kenyataan hari ini | Akibatnya |
 |---|---|
-| **Semua lewat satu switch Zyxel**, tanpa redundansi | Switch mati = internet, LAN, jalur data, **dan** akses BMC hilang serentak |
-| **Ketiga BMC satu segmen dengan LAN data**, di belakang ONT yang dikelola ISP | BMC = kendali setara akses fisik. Satu salah konfigurasi di ONT bisa membukanya ke internet |
+| **Password admin switch masih default pabrik**, manajemen hanya Telnet + HTTP | Siapa pun di LAN bisa ambil alih switch, lalu menyadap seluruh trafik lewat port mirroring |
+| **Semua lewat satu switch Zyxel**, PSU tunggal, tanpa redundansi | Switch atau PSU-nya mati = internet, LAN, jalur data, **dan** akses BMC hilang serentak |
+| **Ketiga BMC di VLAN 1 bersama server, dan berbagi port fisik dengan host-nya** | BMC = kendali setara akses fisik, terjangkau dari seluruh LAN — dan **tidak bisa dipisah dengan memindahkan kabel** |
+| **Firmware switch dari 2019** (± 7 tahun) | Tertinggal perbaikan keamanan |
 | **Proxmox hanya 1 GbE** dan tidak ada di `192.168.30.0/24` | Memindahkan 1 TB arsip butuh ± 3 jam. Arsip 140 TB praktis terkurung |
 | **Tidak ada titik ingress yang jelas** | Data masuk lewat jalur tidak seragam, tanpa validasi/checksum terpusat |
 | **T4-Storage merangkap storage + monitoring** | Satu node mati = job berhenti **dan** visibilitas hilang bersamaan |
@@ -250,8 +252,8 @@ Jarak dari §2.1 ke §2.2 sebenarnya pendek — **inti masalahnya cuma satu link
 | # | Pekerjaan | Kondisi | Catatan |
 |---|---|---|---|
 | 1 | **Pasang NIC SFP+ 10 GbE di `PROXMOX-2U`** | ✅ **Bisa langsung** | `dmidecode -t slot` menunjukkan **5 slot kosong**: `CPU SLOT1/3/5` (PCIe 4.0 x16) dan `CPU SLOT2/4` (x8). Slot 6 & 7 terpakai |
-| 2 | **Sambungkan ke switch Zyxel**, beri IP `192.168.30.4/24` | ⚠️ Perlu dicek | Pastikan Zyxel punya port SFP+ kosong — modelnya belum terdata |
-| 3 | **Set MTU 9000** di sisi proxmox & pastikan switch meneruskan jumbo frame | ⚠️ Perlu dicek | `HPC-GPU` sudah 9000. Uji: `ping -M do -s 8972 -c4 192.168.30.2` |
+| 2 | **Sambungkan ke `e0/0/25` di switch Zyxel**, masukkan port ke **VLAN 30**, beri IP `192.168.30.4/24` | ✅ **Bisa langsung** | Terverifikasi dari CLI switch: **`e0/0/25` dan `e0/0/27` kosong**, keduanya 10 GbE. Tinggal siapkan transceiver SFP+ yang cocok |
+| 3 | **Set MTU 9000** di sisi proxmox | ✅ **Bisa langsung** | Terverifikasi: switch memakai **MTU 10248 di seluruh port**, jumbo frame sudah diteruskan. Uji: `ping -M do -s 8972 -c4 192.168.30.2` |
 | 4 | **Daftarkan `zfs-storage` & `backup-pool` sebagai storage PVE** | Belum | Sekarang kapasitas terbesar tidak terlihat di UI Proxmox |
 | 5 | **Buat dataset landing zone** + prosedur checksum | Belum | mis. `zfs-storage/ingest/<tanggal>-<sumber>` |
 | 6 | **Perbaiki monitoring** (target Prometheus `.113` → `.193`) | Belum | Tanpa ini, seluruh alur di atas berjalan tanpa alarm |
@@ -318,11 +320,24 @@ sama, satu hop di belakang perangkat ISP.
 | VLAN 20 (data) → internet | 🔴 **BLOKIR** | Jalur NFS tidak punya urusan dengan internet |
 | **Internet → VLAN 10/20/30** | 🔴 **BLOKIR TOTAL** | Tidak ada satu pun port yang boleh di-forward ke sini |
 
-> **Kalau cuma bisa mengerjakan satu hal keamanan, kerjakan ini:**
-> **pindahkan ketiga BMC ke VLAN terpisah.** Satu perubahan konfigurasi switch,
-> dan tiga server sekaligus terlindungi dari permukaan serangan yang paling
-> berbahaya. Sekarang siapa pun di LAN — termasuk perangkat Wi-Fi tamu, kalau
-> Wi-Fi ONT satu segmen — bisa menjangkau `192.168.18.200`, `.13`, dan `.119`.
+> 🔴 **PENTING — BMC tidak bisa dipisahkan dengan memindahkan kabel.**
+> Tabel MAC switch membuktikan **setiap BMC berbagi port fisik dengan host-nya**
+> (NC-SI shared LAN): port `e0/0/3` membawa MAC host proxmox **dan** MAC BMC-nya
+> sekaligus; pola yang sama di `e0/0/2` (`HPC-GPU`) dan `e0/0/4` (`T4-Storage`).
+> Tidak ada kabel BMC terpisah untuk dipindahkan.
+>
+> Pemisahan harus dilakukan dengan **dua langkah bersamaan**:
+> 1. **Set VLAN ID 802.1q di dalam konfigurasi tiap BMC** — sekarang
+>    `ipmitool lan print 1` di proxmox melaporkan `802.1q VLAN ID: Disabled`.
+> 2. **Ubah port switch jadi trunk** — untagged untuk VLAN host, **tagged** untuk VLAN BMC.
+>
+> ⚠️ **Jangan kerjakan dari jarak jauh.** Salah langkah = BMC tidak terjangkau,
+> padahal BMC itulah jalan pemulihan saat server bermasalah. Kerjakan saat
+> konsol fisik tersedia.
+
+> **Kalau cuma sempat mengerjakan satu hal keamanan hari ini:**
+> **ganti password admin switch Zyxel** — sekarang masih default pabrik.
+> Pemegang switch bisa menyadap seluruh trafik lewat port mirroring.
 
 **Lapisan pertahanan lain yang belum ada:**
 

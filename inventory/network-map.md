@@ -50,9 +50,9 @@ Tiga server bare-metal, seluruhnya aktif per 2026-09-02.
 
 | Node | Interface | IP data | Speed | MTU | Status |
 |---|---|---|---|---|---|
-| `T4-Storage` | `enp65s0f0` (SFP+) | `192.168.30.2` | 10 Gb/s | ⚠️ *(belum terverifikasi)* | 🟢 terpasang |
-| `HPC-GPU` | `enp1s0f0` (SFP+) | `192.168.30.3` | 10 Gb/s | 9000 | 🟢 terpasang |
-| **`PROXMOX-2U`** | *(NIC belum ada)* | **`192.168.30.4`** | 10 Gb/s | 9000 | 🔵 **direncanakan** — lihat §2.2 |
+| `T4-Storage` | `enp65s0f0` (SFP+) | `192.168.30.2` | 10 Gb/s | ⚠️ *(sisi host belum terverifikasi; sisi switch 10248)* | 🟢 terpasang · port `e0/0/26` |
+| `HPC-GPU` | `enp1s0f0` (SFP+) | `192.168.30.3` | 10 Gb/s | 9000 | 🟢 terpasang · port `e0/0/28` |
+| **`PROXMOX-2U`** | *(NIC belum ada)* | **`192.168.30.4`** | 10 Gb/s | 9000 | 🔵 **direncanakan** → port **`e0/0/25`** (kosong) |
 
 Alamat cadangan di segmen ini: `192.168.30.5`–`.20` masih bebas.
 Gateway `192.168.30.1` disebut di tabel routing `HPC-GPU` tapi **belum
@@ -110,9 +110,10 @@ akal, proxmox harus berada di jalur 10 GbE — bukan di 1 GbE.
 |---|---|---|
 | Slot PCIe kosong di proxmox untuk NIC SFP+ | ✅ **Ada, 5 slot** | `dmidecode -t slot`: `CPU SLOT1/3/5` PCIe 4.0 **x16**, `CPU SLOT2/4` **x8**, semuanya `Available`. Slot 6 & 7 `In Use` |
 | Alamat IP tersedia di `192.168.30.0/24` | ✅ Ada | Hanya `.2` dan `.3` terpakai |
-| Port SFP+ kosong di switch Zyxel | ⚠️ **Belum diketahui** | Model switch belum terdata — butuh login atau label fisik |
-| Jumbo frame diteruskan switch | ⚠️ **Belum diketahui** | Harus dipastikan, `HPC-GPU` sudah MTU 9000 |
-| Kabel/transceiver SFP+ | ⚠️ Belum diketahui | Perlu dicocokkan dengan tipe port switch (DAC vs fiber) |
+| Port SFP+ kosong di switch Zyxel | ✅ **Ada, 2 port** | `show interface brief`: **`e0/0/25`** dan **`e0/0/27`** link down, keduanya 10 GbE. Terpakai: `e0/0/26` (T4-Storage) & `e0/0/28` (HPC-GPU) |
+| Jumbo frame diteruskan switch | ✅ **Ya** | `show mtu interface`: **MTU 10248 byte di seluruh 28 port** — jauh di atas 9000 |
+| VLAN data sudah ada | ✅ **Ada** | `show vlan`: **VLAN 30 `SERVERS`**, anggota `e0/0/26` & `e0/0/28`. Port proxmox tinggal dimasukkan ke VLAN ini |
+| Kabel/transceiver SFP+ | ⚠️ Perlu dibeli | Cocokkan dengan tipe port MGS3520-28FX (DAC vs fiber) — cek modul yang sudah terpasang di `e0/0/26`/`e0/0/28` |
 
 **Langkah penerapan:**
 
@@ -135,9 +136,12 @@ ping -M do -s 8972 -c4 192.168.30.2    # ke T4-Storage
 ping -M do -s 8972 -c4 192.168.30.3    # ke HPC-GPU
 ```
 
-> **Kalau `ping -M do -s 8972` gagal tapi `ping` biasa jalan**, berarti switch
-> **tidak** meneruskan jumbo frame. Jangan dibiarkan — MTU tidak cocok membuat
-> throughput anjlok diam-diam tanpa pesan error.
+> ✅ **Sisi switch sudah siap** — MTU 10248 di seluruh port, dan VLAN 30 sudah ada.
+> Yang tersisa murni pekerjaan fisik: pasang NIC, colok ke `e0/0/25`, masukkan
+> port itu ke VLAN 30, lalu set IP dan MTU di sisi proxmox.
+>
+> Kalau `ping -M do -s 8972` tetap gagal setelah semua terpasang, periksa MTU di
+> sisi host — bukan switch.
 
 > ⚠️ **Jangan pindahkan beban ingress ke proxmox sebelum `backup-pool` dibereskan.**
 > Pool itu sekarang **93–95% penuh di atas single disk tanpa redundansi**, dan
@@ -192,13 +196,16 @@ Bukan server terpisah — modul manajemen dari server di §2.
 | **Peran** | **Switch pembawa jalur SFP+ 10 GbE** antara `T4-Storage` ↔ `HPC-GPU` |
 | **IP Manajemen** | `192.168.18.250` |
 | **Vendor** | **ZyXEL Communications Corp.** *(dari footer web configurator)* |
-| **Model** | *(isi — tidak diumumkan sebelum login; baca dari label fisik)* |
+| **Model** | ✅ **ZyXEL MGS3520-28FX** — 24× 1 GbE + 4× SFP+ 10 GbE |
 | **Web UI** | `http://192.168.18.250/index.asp` — `Server: WebServer`, charset `gb2312` |
 | **Port terbuka** | **`23` (Telnet)**, `80` (HTTP) |
 | **HTTPS** | 🔴 **tidak tersedia** |
-| **Firmware** | *(isi)* |
-| **Kredensial** | simpan di password manager, entri `Switch / zyxel-192.168.18.250` |
-| **Konfigurasi VLAN** | *(isi — penting: bagaimana `192.168.30.0/24` dipisah dari `.18`)* |
+| **Firmware** | **`V1.06(ABGV.0)b1`** — ⚠️ compiled **2019-08-07** |
+| **Serial** | ✅ `S175852000302` · MAC `1C:74:0D:FF:DA:64` |
+| **Kredensial** | 🔴 **masih default pabrik — wajib diganti**, lalu simpan di password manager, entri `Switch / zyxel-192.168.18.250` |
+| **Konfigurasi VLAN** | ✅ **VLAN 1** (semua 28 port) + **VLAN 30 `SERVERS`** (`e0/0/26`, `e0/0/28`) |
+| **Jumbo frame** | ✅ **MTU 10248 di seluruh port** — jumbo diteruskan |
+| **Port SFP+ kosong** | ✅ **`e0/0/25` & `e0/0/27`** — cukup untuk rencana ingress proxmox |
 
 > 🔴 **Manajemen switch hanya lewat Telnet (23) dan HTTP (80) — keduanya
 > plaintext.** Kredensial admin switch terkirim tanpa enkripsi dan bisa disadap

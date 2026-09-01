@@ -24,17 +24,22 @@
 | **IP** | `192.168.18.1` |
 | **MAC** | **`78:5C:5E:C5:9A:72`** |
 | **Vendor (OUI)** | **Huawei Technologies** |
-| **Model** | ⚠️ *(isi — baca dari label fisik)* |
-| **Firmware** | ⚠️ *(isi)* |
+| **Model** | ✅ **Huawei HG8245** *(dari halaman login: string `HG8245` + seluruh logo bernama `hwlogo_*`)* — konfirmasi varian persisnya dari label fisik |
+| **Firmware** | ⚠️ *(isi)* — aset web bertanggal `2023-09-11` |
 | **ISP / Provider** | *(isi)* |
 | **Nomor Layanan / Akun** | *(isi)* |
 | **Kecepatan Langganan** | *(isi)* |
 | **Kontak Support ISP** | *(isi)* |
 | **Kredensial Admin** | *(simpan di password manager, entri `ONT / 192.168.18.1` — **jangan tulis di sini**)* |
 
-> ⚠️ **Halaman webnya memuat string `ONT` dan `ZTE`, sedangkan OUI MAC-nya Huawei.**
-> Kemungkinan firmware generik atau perangkat rebrand. **Model pastinya harus
-> dibaca dari label fisik** — jangan simpulkan dari OUI saja.
+> **Model terkonfirmasi Huawei HG8245.** Halaman login memuat string `HG8245`
+> dan seluruh berkas logonya bernama `hwlogo_*` (Huawei), konsisten dengan OUI
+> MAC `78:5C:5E` = Huawei. String `ZTE` yang juga muncul berasal dari template
+> multi-vendor bawaan firmware, bukan penanda perangkatnya.
+>
+> Login memakai `crypto-js` + `safelogin.js`, jadi password di-hash di sisi
+> browser sebelum dikirim — sedikit lebih baik daripada switch Zyxel yang
+> mengirimnya polos.
 
 ---
 
@@ -77,6 +82,16 @@ Hasil `nmap -sV -Pn 192.168.18.1` dari dalam LAN:
 > broadcast domain `192.168.18.0/24` yang sama, tanpa firewall internal di antara
 > mereka.
 
+**Terverifikasi dari tabel MAC switch:** ONT tersambung ke port **`e0/0/1`**
+(VLAN 1). Di port yang sama juga terlihat MAC **`50:e9:71:03:26:8a`** — perangkat
+lain yang **belum teridentifikasi**, kemungkinan tersambung ke salah satu port LAN
+ONT. Apa pun itu, ia berada di segmen yang sama dengan seluruh server dan BMC,
+jadi **wajib diidentifikasi** (`KI-ONT09`).
+
+> Diduga `T4-Storage eno2` — port gigabit yang nego di 100 Mb/s dan **tidak ada di
+> tabel MAC switch Zyxel** — juga tersambung ke port LAN ONT, bukan ke switch.
+> Perlu ditelusuri fisik.
+
 ---
 
 ## 4. Known Issues & Risiko
@@ -90,7 +105,8 @@ Hasil `nmap -sV -Pn 192.168.18.1` dari dalam LAN:
 | `KI-ONT05` | **Menjadi satu-satunya DNS** (`resolv.conf` proxmox) | ONT reboot/rusak = resolusi nama seluruh server ikut mati | 🟠 Tinggi |
 | `KI-ONT06` | **Tidak ada firewall internal** antara LAN klien, server, dan BMC | Satu perangkat Wi-Fi yang terinfeksi punya jalur langsung ke seluruh BMC | 🔴 Kritis |
 | `KI-ONT07` | **Password admin ONT kemungkinan masih default pabrik** *(perlu konfirmasi)* | Model Huawei/ZTE punya kredensial default yang terdokumentasi publik | 🟠 Tinggi |
-| `KI-ONT08` | **Model, firmware, dan detail langganan tidak terdokumentasi** | Tidak bisa cek CVE, tidak bisa eskalasi ke ISP dengan cepat saat gangguan | 🟡 Sedang |
+| `KI-ONT08` | **Firmware & detail langganan tidak terdokumentasi** (model sudah terkonfirmasi HG8245) | Tidak bisa cek CVE, tidak bisa eskalasi ke ISP dengan cepat saat gangguan | 🟡 Sedang |
+| `KI-ONT09` | **Perangkat tak dikenal `50:e9:71:03:26:8a`** berbagi port `e0/0/1` dengan ONT | Ada host tak teridentifikasi di segmen yang sama dengan seluruh server dan BMC | 🟠 Tinggi |
 
 ---
 
@@ -131,7 +147,7 @@ nmap -Pn -p 22,80,443,623,5900,8006,9090,2049 <ip-publik>
    murah dengan risiko terbesar bila diabaikan.
 2. **Verifikasi dari luar** dengan `nmap` dari jaringan lain — jangan hanya
    percaya pada tampilan konfigurasi.
-3. **Pisahkan BMC ke VLAN manajemen di switch Zyxel** ([zyxel-switch.md §6](zyxel-switch.md#6-rekomendasi)).
+3. **Pisahkan BMC ke VLAN manajemen di switch Zyxel** ([zyxel-switch.md §7](zyxel-switch.md#7-rekomendasi-berurutan)).
    Selama BMC satu segmen dengan jaringan yang di-NAT ONT, satu kesalahan
    konfigurasi di perangkat ISP bisa membuka jalan ke seluruh server.
 4. **Pertimbangkan router/firewall sendiri di antara ONT dan Zyxel.** Menjadikan

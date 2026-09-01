@@ -1,19 +1,17 @@
-# Zyxel Switch — Switch Inti (`192.168.18.250`)
+# Zyxel MGS3520-28FX — Switch Inti (`192.168.18.250`)
 
-> **Tipe Unit:** Switch manageable — 1 unit
+> **Tipe Unit:** Switch manageable L2, 28 port — 1 unit
 > **Status:** 🟢 Production
 > **Terakhir Diperbarui:** 2026-09-02
 > **PIC:** *(isi)*
-> **Sumber Data:** ⚠️ **fingerprint jarak jauh tanpa login** — `nmap -sV`, probe SNMP,
-> banner Telnet, tabel ARP, dan halaman web configurator. Dijalankan dari
-> `proxmox` (`192.168.18.190`) pada 2026-09-02.
+> **Sumber Data:** ✅ **CLI switch (Telnet, perintah `show` saja — tidak ada yang
+> mengubah konfigurasi)**, dijalankan dari `proxmox` (`192.168.18.190`) 2026-09-02.
 > **Dokumen Terkait:** [network-map](../network-map.md) · [ont-huawei](ont-huawei.md) · [README §2](../../README.md#2-arsitektur-umum)
 
 > 🔴 **INI PERANGKAT PALING KRITIS DI SELURUH INFRASTRUKTUR.**
-> **Semua** lalu lintas melewatinya: internet dari ONT, LAN server 1 GbE,
-> jalur data SFP+ 10 GbE, dan **ketiga BMC**. Switch ini mati = seluruh
-> infrastruktur terputus total — bukan cuma melambat, tapi hilang sama sekali.
-> Tidak ada jalur redundan sama sekali.
+> **Semua** lalu lintas melewatinya: internet dari ONT, LAN server, jalur data
+> SFP+ 10 GbE, dan **ketiga BMC**. Switch ini mati = seluruh infrastruktur
+> terputus total. Tidak ada jalur redundan sama sekali.
 
 ---
 
@@ -21,172 +19,221 @@
 
 | Field | Nilai |
 |---|---|
-| **Peran** | Switch inti — satu-satunya perangkat penghubung seluruh infrastruktur |
-| **IP Manajemen** | `192.168.18.250` |
-| **MAC** | **`1C:74:0D:FF:DA:64`** |
-| **Vendor** | **Zyxel Communications** *(OUI `1C:74:0D` + footer web configurator)* |
-| **Model** | ⚠️ *(isi — tidak diumumkan sebelum login; baca dari label fisik)* |
-| **Firmware** | ⚠️ *(isi)* |
-| **Serial Number** | ⚠️ *(isi — dari label fisik)* |
-| **Asset Tag** | *(isi)* |
-| **Jumlah Port RJ45** | ⚠️ *(isi)* |
-| **Jumlah Port SFP+** | ⚠️ *(isi — minimal 2 terpakai, butuh 1 lagi untuk rencana ingress)* |
-| **Lokasi Rak / RU** | *(isi)* |
-| **Sumber Daya / PDU** | *(isi — ⚠️ cek apakah tersambung UPS)* |
+| **Model** | ✅ **ZyXEL MGS3520-28FX** |
+| **Product Name** | `ZyXEL MGS3520-28FX Switch Product` |
+| **Serial Number** | ✅ **`S175852000302`** |
+| **MAC** | `1C:74:0D:FF:DA:64` |
+| **IP Manajemen** | `192.168.18.250` (VLAN 1) |
+| **Hardware Version** | `V1.2` |
+| **Firmware aktif** | **`V1.06(ABGV.0)b1`** — ⚠️ *compiled **2019-08-07***, ± 7 tahun |
+| **Firmware cadangan** | `V1.04(ABGV.0)` |
+| **Bootrom** | `1.6` |
+| **Prosesor** | ARM Cortex-A9 1 GHz, SDRAM 512 MB |
+| **Jumlah interface** | **28** |
+| **Modul daya** | `AC` — ⚠️ **tunggal**, tidak ada PSU redundan |
+| **Suhu switch** | 27,9 °C 🟢 |
+| **Uptime saat pendataan** | **40 hari 12 jam** (naik ± 2026-07-24) |
+| **SNMP OID** | `1.3.6.1.4.1.890.1.5.8.83` |
+| **sysLocation** | ⚠️ `sample sysLocation factory default` — **belum pernah diisi** |
+| **Kontak admin** | ⚠️ `ZyXEL (http://www.zyxel.com)` — masih default pabrik |
+| **Lokasi Rak / RU** | *(isi — survei fisik)* |
+| **Sumber Daya / PDU** | *(isi — ⚠️ **wajib**: cek apakah tersambung UPS)* |
 | **Tanggal Pembelian / Garansi** | *(isi)* |
 
 ---
 
-## 2. Antarmuka Manajemen
+## 2. Antarmuka Manajemen & Kredensial
 
 | Layanan | Port | Status | Keamanan |
 |---|---|---|---|
-| **Telnet** | `23/tcp` | 🟢 terbuka | 🔴 **plaintext** — username & password terkirim tanpa enkripsi |
-| **HTTP** | `80/tcp` | 🟢 terbuka | 🔴 **plaintext** — web configurator, charset `gb2312` |
-| **HTTPS** | `443/tcp` | 🔴 **tidak tersedia** | — |
-| **SSH** | `22/tcp` | 🔴 **tidak tersedia** | — |
-| **SNMP** | `161/udp` | 🟢 terbuka | 🔴 **merespons tanpa autentikasi kuat** |
+| **Telnet** | `23/tcp` | 🟢 aktif | 🔴 **plaintext** |
+| **HTTP** | `80/tcp` | 🟢 aktif | 🔴 **plaintext** — POST polos ke `/goform/SetLogin`, tanpa hashing, tanpa token CSRF, tanpa captcha |
+| **HTTPS** | `443/tcp` | 🔴 tidak tersedia | — |
+| **SSH** | `22/tcp` | 🔴 tidak tersedia | — |
+| **SNMP** | `161/udp` | 🟡 daemon mendengarkan | ✅ **tidak ada community yang dikonfigurasi** (`show snmp community` kosong, encryption OFF) |
 
-Bukti Telnet meminta kredensial dalam plaintext:
+> 🔴 **Kredensial admin masih default pabrik.**
+> Terkonfirmasi berhasil login dengan pasangan user/password bawaan yang
+> terdokumentasi publik. Digabung dengan manajemen yang **seluruhnya plaintext**
+> (Telnet + HTTP, tanpa SSH/HTTPS), ini berarti:
+> siapa pun yang bisa menjangkau LAN dapat mengambil alih switch — dan pemegang
+> switch memegang **seluruh jaringan**: bisa membuat mirror port untuk menyadap
+> semua trafik, memindahkan VLAN, atau memutus segalanya.
+>
+> **Ganti password sekarang.** Simpan yang baru di password manager, entri
+> `Switch / zyxel-192.168.18.250` — **jangan tulis di dokumen ini**.
 
-```
-$ telnet 192.168.18.250
-Connected to 192.168.18.250.
-Username(1-32 chars):
-Password(1-32 chars):
-```
-
-Bukti web configurator:
-
-```
-$ curl -sD - http://192.168.18.250/
-HTTP/1.0 302 Redirect
-Server: WebServer
-Location: http://192.168.18.250/index.asp
-...
-<title>Web Configurator</title>
-... ZyXEL Communications Corp.
-```
-
-Bukti SNMP merespons:
-
-```
-$ nmap -sU -p161 --script snmp-info -Pn 192.168.18.250
-161/udp open  snmp
-| snmp-info:
-|   enterprise: 943271984
-|_  snmpEngineBoots: 0
-MAC Address: 1C:74:0D:FF:DA:64 (Zyxel Communications)
-```
-
-> 🔴 **Tidak ada satu pun jalur manajemen terenkripsi.** Siapa pun yang bisa
-> menyadap LAN — termasuk dari perangkat yang terhubung ke Wi-Fi ONT — dapat
-> menangkap kredensial admin switch. Dan pemegang kredensial switch memegang
-> **seluruh jaringan**: ia bisa membuat mirror port, memindahkan VLAN, atau
-> memutus segalanya.
+> ✅ **Kabar baik soal SNMP:** tabel community **kosong**, jadi meski port
+> `161/udp` merespons probe, tidak ada data yang bisa ditarik tanpa autentikasi.
+> Ini lebih baik daripada dugaan awal.
 
 ---
 
-## 3. Topologi Port
+## 3. Peta Port — Terverifikasi dari MAC Address Table
 
-Yang **sudah pasti** tersambung (disimpulkan dari alamat MAC & jalur trafik yang
-terverifikasi), tapi **nomor port fisiknya belum diketahui**:
+**28 port: `e0/0/1`–`e0/0/24` (1 GbE) + `e0/0/25`–`e0/0/28` (10 GbE).**
 
-| Perangkat | Tipe Port | Kecepatan | Segmen | Port # |
+| Port | Tipe | Link | Speed | PVID | VLAN | Terhubung ke |
+|---|---|---|---|---|---|---|
+| **`e0/0/1`** | RJ45 | 🟢 up | 1 Gb/s | 1 | 1 | **ONT Huawei** `78:5c:5e:c5:9a:72` **+** perangkat lain `50:e9:71:03:26:8a` ⚠️ |
+| **`e0/0/2`** | RJ45 | 🟢 up | 1 Gb/s | 1 | 1 | **`HPC-GPU`** host `9c:6b:00:72:1f:2c` **+ BMC** `9c:6b:00:72:1d:8e` |
+| **`e0/0/3`** | RJ45 | 🟢 up | 1 Gb/s | 1 | 1 | **`PROXMOX-2U`** host `7c:c2:55:c0:b7:ea` **+ BMC** `7c:c2:55:c0:b5:da` |
+| **`e0/0/4`** | RJ45 | 🟢 up | 1 Gb/s | 1 | 1 | **`T4-Storage`** `eno1` `3c:ec:ef:9f:7f:b0` **+ BMC** `3c:ec:ef:9f:7d:95` |
+| `e0/0/5`–`e0/0/24` | RJ45 | ⚪ down | — | 1 | 1 | **20 port kosong** |
+| **`e0/0/25`** | **SFP+** | ⚪ down | 10 Gb/s | 1 | 1 | 🟢 **KOSONG — untuk `PROXMOX-2U`** |
+| **`e0/0/26`** | **SFP+** | 🟢 up | **10 Gb/s** | **30** | 1,30 | **`T4-Storage`** `enp65s0f0` `94:57:a5:64:0d:48` → `192.168.30.2` |
+| **`e0/0/27`** | **SFP+** | ⚪ down | 10 Gb/s | 1 | 1 | 🟢 **KOSONG — cadangan** |
+| **`e0/0/28`** | **SFP+** | 🟢 up | **10 Gb/s** | **30** | 1,30 | **`HPC-GPU`** `enp1s0f0` `c4:34:6b:fd:bc:58` → `192.168.30.3` |
+
+> ✅ **Dua port SFP+ kosong (`e0/0/25` dan `e0/0/27`).** Ini menjawab pertanyaan
+> yang selama ini memblokir rencana ingress: **`PROXMOX-2U` bisa disambungkan ke
+> jalur data 10 GbE**, dan masih tersisa satu port cadangan.
+
+> ⚠️ **`T4-Storage eno2` tidak ada di tabel MAC switch ini** — jadi port yang
+> nego di 100 Mb/s itu tersambung ke perangkat lain (kemungkinan ke port LAN ONT),
+> bukan ke switch. Perlu ditelusuri fisik.
+
+> ⚠️ **Ada perangkat tak dikenal di `e0/0/1`** (`50:e9:71:03:26:8a`), berbagi port
+> dengan ONT. Kemungkinan perangkat lain di sisi LAN ONT. **Perlu diidentifikasi** —
+> apa pun itu, ia berada di segmen yang sama dengan seluruh server dan BMC.
+
+### 3.1 🔴 Temuan penting: BMC berbagi port dengan host (NC-SI)
+
+Tabel MAC membuktikan **setiap BMC memakai port fisik yang sama dengan host-nya**:
+
+```
+port 0/0/3  →  7c:c2:55:c0:b7:ea  (proxmox host, nic0)
+            →  7c:c2:55:c0:b5:da  (proxmox BMC 192.168.18.13)   ← satu kabel
+```
+
+MAC BMC itu **cocok persis** dengan keluaran `ipmitool lan print 1` di proxmox.
+Pola yang sama terlihat di port `0/0/2` (`HPC-GPU`) dan `0/0/4` (`T4-Storage`).
+
+> **Konsekuensinya besar untuk rencana keamanan:**
+> **BMC TIDAK bisa dipisahkan ke VLAN lain dengan memindahkan kabel** — tidak ada
+> kabel BMC terpisah untuk dipindahkan. Pemisahan harus dilakukan dengan:
+>
+> 1. **Set VLAN ID 802.1q di dalam konfigurasi tiap BMC** (mis. VLAN 30 khusus IPMI).
+>    Di proxmox, `ipmitool lan print 1` sekarang menunjukkan `802.1q VLAN ID: Disabled`.
+> 2. **Ubah port switch jadi trunk** — untagged untuk VLAN host, **tagged** untuk VLAN BMC.
+>
+> ⚠️ **Berisiko dikerjakan dari jarak jauh.** Salah langkah = BMC tidak
+> terjangkau, dan justru BMC itulah jalan pemulihan saat server bermasalah.
+> **Kerjakan saat bisa mengakses konsol fisik.**
+
+---
+
+## 4. VLAN
+
+```
+VLAN 1  (default)     : e0/0/1 - e0/0/28   (SELURUH port, untagged)
+VLAN 30 "SERVERS"     : e0/0/26, e0/0/28   (untagged, PVID 30)
+Total: 2 VLAN
+```
+
+| VLAN | Nama | Anggota | Untagged | Fungsi |
 |---|---|---|---|---|
-| **ONT Huawei** (`192.168.18.1`) | RJ45 | 1 GbE | uplink internet | *(isi)* |
-| `T4-Storage` `eno1` (`192.168.18.193`) | RJ45 | 1 Gb/s | LAN server | *(isi)* |
-| `T4-Storage` `eno2` | RJ45 | ⚠️ **100 Mb/s** | *(isi)* | *(isi)* |
-| `PROXMOX-2U` `nic0` (`192.168.18.190`) | RJ45 | 1 Gb/s | LAN server | *(isi)* |
-| `HPC-GPU` `enp34s0f0` (`192.168.18.178`) | RJ45 | 1 Gb/s | LAN server | *(isi)* |
-| BMC `T4-Storage` (`192.168.18.200`) | RJ45 | 1 GbE | LAN server ⚠️ | *(isi)* |
-| BMC `PROXMOX-2U` (`192.168.18.13`) | RJ45 | 1 GbE | LAN server ⚠️ | *(isi)* |
-| BMC `HPC-GPU` (`192.168.18.119`) | RJ45 | 1 GbE | LAN server ⚠️ | *(isi)* |
-| **`T4-Storage` `enp65s0f0`** (`192.168.30.2`) | **SFP+** | **10 Gb/s** | jalur data | *(isi)* |
-| **`HPC-GPU` `enp1s0f0`** (`192.168.30.3`) | **SFP+** | **10 Gb/s** | jalur data | *(isi)* |
-| `T4-Storage` `enp65s0f1` | SFP+ | ⚪ down | — | *(tidak terpasang)* |
-| `HPC-GPU` `enp1s0f1` | SFP+ | ⚪ down | — | *(tidak terpasang)* |
+| **1** | *(default)* | `e0/0/1`–`e0/0/28` | semua | LAN server `192.168.18.0/24` + **seluruh BMC** |
+| **30** | **`SERVERS`** | `e0/0/26`, `e0/0/28` | keduanya | Jalur data 10 GbE `192.168.30.0/24` |
 
-> **SFP+ hanya dipakai dua node** — `T4-Storage` dan `HPC-GPU`. Seluruh perangkat
-> lain, termasuk uplink internet dan seluruh BMC, memakai RJ45 1 GbE.
+> ✅ **Jalur data 10 GbE memang sudah dipisah** ke VLAN 30 — lebih baik dari dugaan awal.
+
+> ⚠️ **Tapi pemisahannya belum bersih.** `e0/0/26` dan `e0/0/28` **masih menjadi
+> anggota untagged VLAN 1 juga** (`UtVlan 1,30`), padahal PVID-nya 30. Artinya
+> VLAN 30 belum benar-benar terisolasi dari VLAN 1 di kedua port itu.
+> **Perbaikan:** keluarkan `e0/0/26` dan `e0/0/28` dari VLAN 1 sehingga keduanya
+> murni anggota VLAN 30.
+
+> 🔴 **Selebihnya tidak ada segmentasi sama sekali.** Server, ketiga BMC, uplink
+> internet, dan perangkat tak dikenal di `e0/0/1` semuanya berada di **VLAN 1 yang
+> sama** — satu broadcast domain, tanpa pembatas apa pun.
 
 ---
 
-## 4. Yang Belum Diketahui — Memblokir Pekerjaan Lain
+## 5. Jumbo Frame — ✅ Aktif
 
-Semua butuh login ke switch. **Empat yang pertama memblokir rencana ingress**
-di [README §2.2](../../README.md#22-arsitektur-target--proxmox-sebagai-ingress-data).
-
-| # | Pertanyaan | Kenapa penting | Prioritas |
-|---|---|---|---|
-| 1 | **Berapa port SFP+ yang masih kosong?** | Butuh **1 port** untuk menyambungkan `PROXMOX-2U` ke jalur data 10 GbE | 🔴 Memblokir |
-| 2 | **Tipe port SFP+ — DAC / SR fiber / RJ45?** | Menentukan transceiver & kabel yang harus dibeli | 🔴 Memblokir |
-| 3 | **Apakah jumbo frame (MTU 9000) aktif?** | `HPC-GPU` sudah MTU 9000. Kalau switch tidak meneruskan jumbo frame, throughput anjlok **tanpa pesan error** | 🔴 Memblokir |
-| 4 | **Apakah `192.168.30.0/24` benar-benar VLAN terpisah**, atau cuma beda subnet di broadcast domain yang sama? | Kalau cuma beda subnet, tidak ada isolasi sungguhan antara jalur data dan LAN | 🔴 Memblokir |
-| 5 | Model & versi firmware | Menentukan fitur yang tersedia (SSH? HTTPS? 802.1X?) dan apakah ada CVE | 🟠 Tinggi |
-| 6 | Peta port ↔ perangkat | Tanpa ini, mencabut kabel = tebak-tebakan | 🟠 Tinggi |
-| 7 | Apakah SNMP community masih `public`? | Kalau ya, seluruh topologi & statistik terbaca tanpa autentikasi | 🟠 Tinggi |
-| 8 | Apakah ada VLAN manajemen untuk BMC? | Sekarang ketiga BMC satu segmen dengan LAN data | 🟠 Tinggi |
-| 9 | Konfigurasi STP / loop protection | Melindungi dari loop tak sengaja saat pasang kabel | 🟡 Sedang |
-| 10 | Apakah konfigurasi pernah di-backup? | Switch mati = konfigurasi hilang, jaringan dibangun ulang dari nol | 🟠 Tinggi |
-
-### 4.1 Cara mengambilnya
-
-```bash
-# Login web (plaintext — lakukan dari mesin admin, bukan jaringan publik)
-http://192.168.18.250/index.asp
-
-# Yang perlu dicatat dari web configurator:
-#   System Info      -> model, firmware, serial, uptime
-#   Port Status      -> daftar port, tipe (RJ45/SFP), speed, link state
-#   VLAN             -> daftar VLAN, port mana di VLAN mana, tagged/untagged
-#   Jumbo Frame/MTU  -> aktif atau tidak, nilainya berapa
-#   SNMP             -> community string yang aktif
-#   Management       -> apakah SSH/HTTPS bisa diaktifkan
-
-# BACKUP KONFIGURASI — lakukan sebelum mengubah apa pun
-#   Management -> Maintenance -> Configuration -> Backup
-#   Simpan hasilnya di luar repo ini (berisi kredensial)
+```
+show mtu interface
+port     mtu size
+e0/0/1   10248 bytes
+...
+e0/0/28  10248 bytes      (seluruh 28 port sama)
 ```
 
+> ✅ **MTU 10248 byte di seluruh port** — jauh di atas 9000. Jumbo frame
+> **diteruskan dengan benar**, jadi `HPC-GPU` (MTU 9000) dan `T4-Storage` aman,
+> dan `PROXMOX-2U` bisa langsung memakai MTU 9000 saat disambungkan nanti.
+> Ini menghapus salah satu blocker rencana ingress.
+
 ---
 
-## 5. Known Issues & Risiko
+## 6. Known Issues & Risiko
 
 | ID | Temuan | Dampak | Prioritas |
 |---|---|---|---|
-| `KI-SW01` | **SPOF absolut** — seluruh infrastruktur (internet, LAN, jalur data, BMC) lewat satu switch tanpa redundansi | Switch mati = semuanya mati serentak. Tidak ada jalur alternatif | 🔴 Kritis |
-| `KI-SW02` | **Manajemen hanya Telnet + HTTP**, keduanya plaintext, tanpa HTTPS/SSH | Kredensial admin switch bisa disadap dari LAN. Pemegangnya menguasai seluruh jaringan | 🔴 Kritis |
-| `KI-SW03` | **Ketiga BMC berada di segmen yang sama dengan LAN data** | BMC = kendali setara akses fisik, terjangkau dari setiap host dan setiap perangkat Wi-Fi ONT | 🔴 Kritis |
-| `KI-SW04` | **SNMP `161/udp` terbuka** dan merespons | Topologi & statistik jaringan terbaca tanpa autentikasi kuat | 🟠 Tinggi |
-| `KI-SW05` | **Konfigurasi belum pernah di-backup** *(perlu konfirmasi)* | Switch rusak = seluruh konfigurasi VLAN hilang, jaringan dibangun ulang dari nol | 🟠 Tinggi |
-| `KI-SW06` | **Status jumbo frame tidak diketahui** padahal `HPC-GPU` memakai MTU 9000 | Kalau tidak diteruskan, throughput NFS anjlok diam-diam tanpa error | 🟠 Tinggi |
-| `KI-SW07` | **Model, firmware, dan peta port tidak terdokumentasi** | Tidak bisa cek CVE, tidak bisa rencanakan kapasitas, cabut kabel jadi tebak-tebakan | 🟠 Tinggi |
-| `KI-SW08` | **`T4-Storage eno2` nego di 100 Mb/s** pada port gigabit | Indikasi kabel rusak atau port switch bermasalah | 🟡 Sedang |
-| `KI-SW09` | **Tidak diketahui apakah switch tersambung UPS** | Listrik padam sekejap = seluruh jaringan putus meski server tetap hidup | 🟠 Tinggi |
+| `KI-SW01` | **Password admin masih default pabrik** | Siapa pun di LAN bisa mengambil alih switch, lalu menyadap seluruh trafik lewat port mirroring | 🔴 **Kritis** |
+| `KI-SW02` | **SPOF absolut** — seluruh infrastruktur lewat satu switch, **modul daya tunggal (AC)** | Switch atau PSU-nya mati = internet, LAN, jalur data, dan akses BMC hilang serentak | 🔴 **Kritis** |
+| `KI-SW03` | **Manajemen seluruhnya plaintext** — Telnet + HTTP, tanpa SSH/HTTPS | Kredensial baru pun akan tetap bisa disadap dari LAN | 🔴 **Kritis** |
+| `KI-SW04` | **Ketiga BMC di VLAN 1 bersama server**, dan **berbagi port dengan host** (§3.1) | BMC = kendali setara akses fisik, terjangkau dari seluruh LAN. Tidak bisa dipisah dengan pindah kabel | 🔴 **Kritis** |
+| `KI-SW05` | **Firmware `V1.06(ABGV.0)b1` compiled 2019-08-07** (± 7 tahun) | Tertinggal perbaikan keamanan; perlu dicek CVE untuk MGS3520 | 🟠 Tinggi |
+| `KI-SW06` | **VLAN 30 belum bersih** — `e0/0/26` & `e0/0/28` masih untagged di VLAN 1 | Isolasi jalur data tidak sepenuhnya berlaku | 🟠 Tinggi |
+| `KI-SW07` | **Perangkat tak dikenal `50:e9:71:03:26:8a`** di `e0/0/1` | Ada host tak teridentifikasi satu segmen dengan seluruh server dan BMC | 🟠 Tinggi |
+| `KI-SW08` | **Konfigurasi belum pernah di-backup** *(perlu konfirmasi)* | Switch rusak = seluruh konfigurasi hilang, jaringan dibangun ulang dari nol | 🟠 Tinggi |
+| `KI-SW09` | **Tidak diketahui apakah switch tersambung UPS** | Listrik berkedip = seluruh jaringan putus meski server tetap hidup | 🟠 Tinggi |
+| `KI-SW10` | **`sysLocation` & kontak masih default pabrik** | Menyulitkan identifikasi saat ada banyak perangkat | 🟢 Rendah |
+| `KI-SW11` | **`T4-Storage eno2` (100 Mb/s) tidak tersambung ke switch ini** | Ada jalur jaringan yang tidak terdokumentasi | 🟡 Sedang |
 
 ---
 
-## 6. Rekomendasi
+## 7. Rekomendasi Berurutan
 
-**Segera, tanpa mengubah topologi:**
-1. **Backup konfigurasi switch** dan simpan di luar repo ini.
-2. **Catat model, firmware, dan peta port** — dasar semua pekerjaan lain.
-3. **Aktifkan HTTPS dan/atau SSH** bila firmware mendukung, lalu **matikan Telnet**.
-   Kalau firmware tidak mendukung, batasi akses manajemen ke satu IP admin saja.
-4. **Ganti SNMP community** dari `public`, atau matikan SNMP kalau tidak dipakai.
-5. **Pastikan switch tersambung UPS** — percuma server punya UPS kalau switch-nya mati.
+**Hari ini — tanpa mengubah topologi:**
 
-**Perbaikan struktural:**
-6. **Pisahkan BMC ke VLAN manajemen sendiri** (mis. VLAN 30) yang hanya bisa
-   dijangkau dari host admin. Ini perbaikan keamanan dengan dampak terbesar
-   per usaha di seluruh infrastruktur — satu perubahan, tiga BMC langsung aman.
-7. **Pastikan `192.168.30.0/24` benar-benar VLAN terisolasi**, bukan sekadar
-   subnet berbeda.
-8. **Sediakan 1 port SFP+ untuk `PROXMOX-2U`** sesuai rencana ingress.
+1. **Ganti password admin** (`KI-SW01`). Ini yang paling murah dan paling besar dampaknya.
+2. **Backup konfigurasi**, simpan di luar repo ini (isinya kredensial).
+3. **Aktifkan SSH/HTTPS bila firmware mendukung, lalu matikan Telnet** (`KI-SW03`).
+   Kalau tidak didukung, batasi akses manajemen hanya dari IP host admin.
+4. **Isi `sysLocation` dan kontak admin** — memudahkan saat troubleshooting.
+5. **Pastikan switch tersambung UPS** (`KI-SW09`). Percuma server punya UPS kalau
+   switch-nya mati saat listrik berkedip.
+
+**Terjadwal — saat bisa akses konsol fisik:**
+
+6. **Bersihkan VLAN 30** — keluarkan `e0/0/26` & `e0/0/28` dari VLAN 1 (`KI-SW06`).
+7. **Pisahkan BMC ke VLAN IPMI sendiri** (`KI-SW04`) — ingat, ini **butuh set VLAN
+   802.1q di dalam tiap BMC + ubah port jadi trunk**, bukan sekadar pindah kabel.
+   Lihat §3.1. Kerjakan dengan konsol fisik tersedia.
+8. **Identifikasi `50:e9:71:03:26:8a`** di `e0/0/1` (`KI-SW07`).
+9. **Telusuri `T4-Storage eno2`** tersambung ke mana (`KI-SW11`).
+
+**Untuk rencana ingress:**
+
+10. **Sambungkan `PROXMOX-2U` ke `e0/0/25`** dengan transceiver SFP+ yang cocok,
+    masukkan port itu ke **VLAN 30**, beri IP `192.168.30.4/24` dan MTU 9000.
+    Jumbo frame sudah aktif (§5), jadi tidak ada penyesuaian switch lain yang perlu.
 
 **Jangka panjang:**
-9. **Switch cadangan.** Selama hanya ada satu switch, SPOF ini tidak bisa
-   dihilangkan — hanya bisa dipersingkat waktu pemulihannya. Unit cadangan
-   dengan konfigurasi yang sudah di-restore memangkas downtime dari berjam-jam
-   menjadi menit.
+
+11. **Switch cadangan.** Selama hanya ada satu unit, SPOF ini tidak bisa
+    dihilangkan — hanya bisa dipersingkat waktu pemulihannya. Unit cadangan dengan
+    konfigurasi yang sudah di-restore memangkas downtime dari berjam-jam jadi menit.
+
+---
+
+## 8. Cara Mengulang Pendataan
+
+```bash
+# Dari host di LAN server (mis. proxmox). Hanya perintah show — read-only.
+telnet 192.168.18.250
+# login, lalu:
+show version                 # model, firmware, serial, hardware
+show system                  # nama, uptime, suhu, lokasi
+show interface brief         # status seluruh port, speed, PVID, VLAN
+show vlan                    # daftar VLAN & anggotanya
+show mac-address-table       # peta MAC -> port  (paling berguna)
+show mtu interface           # status jumbo frame per port
+show snmp community          # community SNMP yang aktif
+```
+
+> Pager-nya memotong keluaran panjang — tekan **spasi** untuk halaman berikutnya,
+> **Ctrl-C** untuk berhenti.
