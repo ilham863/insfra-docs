@@ -2,14 +2,43 @@
 
 > **Tipe Unit:** Bare-Metal Hypervisor Host — 1 chassis fisik
 > **Status:** 🟢 Production
-> **Terakhir Diperbarui:** 2026-08-28
+> **Terakhir Diperbarui:** 2026-09-02
 > **PIC Node:** *(isi nama sysadmin)*
-> **Sumber Data:** auto-collect via SSH — `scripts/collect-proxmox.sh`, 2026-08-28 14:28 WIB
+> **Sumber Data:** auto-collect via SSH — `scripts/collect-proxmox.sh`, 2026-09-02 02:24 WIB
+> · koleksi ulang **2026-09-02 02:40 WIB** (verifikasi silang saat pendataan `T4-Storage`)
+
+> 🔴 **VM 300 `vega` sudah tidak ada lagi saat koleksi 02:40.**
+> Log task Proxmox menunjukkan urutan berikut:
+>
+> | Waktu (WIB) | Task | Hasil |
+> |---|---|---|
+> | 2026-09-01 16:34:39 | `qmcreate:300` | OK |
+> | 2026-09-01 16:48:06 | `qmstart:300` | OK |
+> | 2026-09-02 02:25:55 | `qmconfig:300` | OK |
+> | **2026-09-02 02:29:45** | **`qmdestroy:300`** | **OK** |
+>
+> Pada koleksi 02:40, `qm list` hanya menampilkan **VM 100 dan VM 200**, dan
+> `/etc/pve/qemu-server/` hanya berisi `100.conf` & `200.conf`. Konsisten dengan
+> itu, `nvme-scratch` turun dari **12.9 G → 6.17 G** (persis sebesar
+> `vm-300-disk-0` yang 6.70 G).
+>
+> **Seluruh bagian bertanda 🆕 tentang VM 300 di dokumen ini karena itu sudah
+> usang** (§8.1, §7.2, §8.3, dan catatan di §6.1). Dataset `zfs-storage/vega-storage`
+> dan `nvme-scratch/vega-filesystem` **masih ada** — keduanya tidak ikut terhapus.
+>
+> Dibiarkan apa adanya karena belum jelas apakah VM ini akan dibuat ulang.
+> **Kalau `vega` dibangun ulang:** perbarui angka-angkanya. **Kalau dibatalkan:**
+> hapus bagian-bagian tersebut dan bersihkan dua dataset sisa itu.
 > **Dokumen Terkait:** [server-changelog](../../track-record/server-changelog.md) · [maintenance-log](../../track-record/maintenance-log.md) · [Panduan Penginputan](../../docs/penginputan-node.md)
 
 > **Peran node ini:** hypervisor tunggal (standalone, non-cluster) yang menjalankan
 > VM pengembangan pipeline bioinformatika, sekaligus merangkap **host penyimpanan
 > arsip 140 TB** (pool `zfs-storage`) dan target backup lokal (`backup-pool`).
+>
+> Sejak 2026-09-01 node ini juga menjadi **host SMRT Link untuk sekuenser PacBio
+> Vega** (VM 300 `vega`) — lihat [§8.1](#81-vm-kvm). Peran ini menyimpang dari
+> [README §2](../../README.md#2-arsitektur-umum) yang menetapkan host virtualisasi
+> **tidak** menjalankan job berat.
 
 ---
 
@@ -73,6 +102,108 @@ ipmitool -I lanplus -H 192.168.18.13 -U <user> sdr type Temperature
 ipmitool -I lanplus -H 192.168.18.13 -U <user> chassis identify 60
 ```
 
+### 2.1 Identitas Chassis (FRU) — 🆕 2026-09-02
+
+Diambil **in-band** (`ipmitool fru print` lewat `/dev/ipmi0`), jadi tidak perlu
+kredensial dan tidak ada password yang lewat jaringan.
+
+| Field | Nilai |
+|---|---|
+| **Board Serial (FRU)** | ✅ **`ZM253S601908`** |
+| **Board Manufacturer** | Supermicro |
+| **Tanggal Produksi Board** | **2025-03-29 07:17 WIB** |
+| **Product Serial** | *(kosong — belum diprogram)* |
+
+> ✅ **Ini identitas aset yang sahih untuk `PROXMOX-2U`.** DMI hanya melaporkan
+> `0123456789` — nilai default yang **sama persis** dengan `T4-Storage`, jadi
+> tidak bisa dipakai membedakan aset. **Gunakan `ZM253S601908`** untuk klaim
+> garansi dan pelacakan inventaris.
+>
+> Tanggal produksi board **2025-03-29** adalah acuan awal menghitung garansi
+> (tanggal pembelian sebenarnya masih perlu diisi di §1).
+
+### 2.2 Akun BMC
+
+| ID | Nama | Callin | Link Auth | IPMI Msg | Privilege |
+|---|---|---|---|---|---|
+| 2 | `ADMIN` | false | false | true | **ADMINISTRATOR** |
+| 1, 3–16 | *(kosong)* | — | — | — | Unknown (0x00) |
+
+> 🟢 Hanya **satu** akun aktif — jauh lebih rapi daripada `HPC-GPU` yang punya
+> tiga akun ADMINISTRATOR. BMC ini juga punya **`Bad Password Threshold: 3`**
+> dengan auto-disable aktif, jadi ada perlindungan brute-force.
+
+### 2.3 Status Chassis & Daya
+
+| Field | Nilai |
+|---|---|
+| **System Power** | 🟢 on |
+| **Power Restore Policy** | `previous` |
+| **Power Overload / Fault** | false |
+| **Chassis Intrusion** | inactive |
+| **Drive Fault** | false |
+| **Cooling/Fan Fault** | false |
+| **PSU terpasang** | ✅ **2 unit** — `PS1` & `PS2`, keduanya *Presence detected* |
+
+> ✅ **PSU redundan (2 unit) terkonfirmasi.** Ini menjawab field yang selama ini
+> kosong di §1.1 — meski jalur PDU-nya masih perlu disurvei fisik.
+
+### 2.4 Suhu & Fan (dari BMC) — 2026-09-02 03:00 WIB
+
+| Sensor | Nilai | Status |
+|---|---|---|
+| CPU Temp | **54 °C** | 🟢 ok |
+| System Temp | 37 °C | 🟢 ok |
+| Peripheral Temp | 45 °C | 🟢 ok |
+| CPU_VRM Temp | 41 °C | 🟢 ok |
+| SOC_VRM Temp | 51 °C | 🟢 ok |
+| VRMABCD / VRMEFGH Temp | 44 / 47 °C | 🟢 ok |
+| P1_DIMMA~D / E~H Temp | 40 / 45 °C | 🟢 ok |
+| **GPU1 Temp** | **47 °C** | 🟢 ok — Tesla T4 slot 6 |
+| **GPU2 Temp** | **48 °C** | 🟢 ok — Tesla T4 slot 7 |
+| M2_SSD1 / M2_SSD2 Temp | No Reading | ⚪ sensor tidak terpakai |
+
+| Fan | RPM | Status |
+|---|---|---|
+| FAN5 | 2.520 | 🟢 ok |
+| FANB | **16.940** | 🟢 ok ⚠️ *sangat tinggi* |
+| FAN1–FAN4, FANA | No Reading | ⚠️ tidak terpasang / tidak terbaca |
+
+> ⚠️ **Hanya 2 dari 7 slot fan yang memberi pembacaan.** Perlu diperiksa fisik:
+> apakah FAN1–4 & FANA memang tidak terpasang (wajar untuk sebagian chassis),
+> atau terpasang tapi mati. **FANB berputar 16.940 RPM** — itu fan kecil
+> berkecepatan tinggi yang sedang bekerja keras; kalau ternyata fan lain mati,
+> FANB sedang menanggung beban pendinginan sendirian.
+
+### 2.5 System Event Log — ⚠️ ada kejadian berulang
+
+| Field | Nilai |
+|---|---|
+| **Entri** | 216 |
+| **Kapasitas terpakai** | 36% (296 dari 512 unit alokasi bebas) |
+| **Overflow** | 🟢 false |
+| **Entri terakhir** | 2026-09-02 02:08:14 WIB |
+
+> ⚠️ **`System Firmwares | Unrecoverable IDE device failure` muncul berulang kali**
+> dan masih berlanjut. Dari 15 entri terakhir, **10 di antaranya** adalah event
+> ini — tercatat pada 26/08, 27/08, 28/08, 31/08 (2×), 01/09 (4×), dan
+> **02/09 02:08:14 — persis pada saat boot terakhir**.
+>
+> Pada Supermicro, pesan ini biasanya muncul saat BIOS gagal menginisialisasi
+> sebuah perangkat penyimpanan pada tahap POST. Kandidat penyebab: slot M.2 kedua
+> (`PCI-E M.2-M2` terisi, tapi sensor `M2_SSD1`/`M2_SSD2` sama-sama *No Reading*),
+> atau salah satu disk di HBA.
+>
+> **Belum berdampak pada operasional** — seluruh pool ZFS `ONLINE` dan SMART
+> semua disk `PASSED`. Tapi ini bukan noise: kejadiannya berulang tiap boot dan
+> perlu ditelusuri sebelum menjadikan node ini titik ingress seluruh data.
+>
+> ```bash
+> ipmitool sel elist | grep -i 'IDE device'      # lihat seluruh riwayatnya
+> dmesg | grep -iE 'ata[0-9]|nvme|failed|error'  # korelasikan dengan sisi OS
+> journalctl -b -p err                            # error pada boot terakhir
+> ```
+
 ---
 
 ## 3. Spesifikasi Hardware Host
@@ -118,12 +249,18 @@ Detail modul:
 
 ### 3.3 Jaringan
 
-| Interface | MAC | Status | Speed | MTU | Keterangan |
-|---|---|---|---|---|---|
-| `nic0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | **1000 Mb/s** | 1500 | uplink aktif, slave `vmbr0` |
-| `nic1` | `7c:c2:55:c0:b7:eb` | ⚪ DOWN | — | 1500 | belum dipakai |
-| `nic2` | `be:3a:f2:b6:05:9f` | ⚪ DOWN | — | 1500 | belum dipakai |
-| `vmbr0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | — | 1500 | bridge utama |
+| Interface | MAC | Status | Speed | MTU | Driver | Bus | Keterangan |
+|---|---|---|---|---|---|---|---|
+| `nic0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | **1000 Mb/s** | 1500 | `tg3` | PCI | uplink aktif, slave `vmbr0` |
+| `nic1` | `7c:c2:55:c0:b7:eb` | ⚪ DOWN | — | 1500 | `tg3` | PCI | port fisik, belum dipakai |
+| `nic2` | `be:3a:f2:b6:05:9f` | ⚪ DOWN | — | 1500 | `rndis_host` | **USB** | ⚠️ **bukan port fisik** — NIC virtual BMC |
+| `vmbr0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | — | 1500 | — | virtual | bridge utama |
+
+> ⚠️ **Koreksi dari pendataan 2026-08-28:** `nic2` sebelumnya tercatat sebagai port
+> fisik "belum dipakai". Sebenarnya itu **NIC virtual USB dari BMC**
+> (`Insyde RNDIS/Ethernet Gadget` di balik `SMCI Virtual Hub`), bukan ethernet.
+> Node ini hanya punya **2 port ethernet fisik**, keduanya 1 GbE onboard
+> (Broadcom BCM5720, `45:00.0` dan `45:00.1`).
 
 | Field | Nilai |
 |---|---|
@@ -158,6 +295,49 @@ source /etc/network/interfaces.d/*
 ```
 
 Bridge tambahan `fwbr100i0` dibuat otomatis oleh PVE karena VM 100 mengaktifkan `firewall=1`.
+
+### 3.4 GPU
+
+> ⚠️ **Baru terdata 2026-09-02.** Dua GPU ini **tidak tercatat sama sekali** pada
+> pendataan 2026-08-28 karena kolektor waktu itu belum memanggil `lspci`.
+> Kolektor sudah diperbaiki — lihat [§13](#13-cara-memperbarui-dokumen-ini).
+
+| Field | Nilai |
+|---|---|
+| **Jumlah GPU** | **2× NVIDIA Tesla T4** (TU104GL, `10de:1eb8`) |
+| **VRAM** | 16 GB per kartu — total **32 GB** |
+| **Alamat PCI** | `01:00.0` (CPU SLOT6) · `81:00.0` (CPU SLOT7) |
+| **Link** | x16 @ 8 GT/s — kecepatan penuh (T4 adalah kartu PCIe 3.0) |
+| **Driver aktif** | ⚠️ **`nouveau`** — bukan driver NVIDIA |
+| **`nvidia-smi`** | ❌ tidak terpasang di host |
+| **`vfio` / passthrough** | ❌ tidak dimuat; tidak ada VM dengan `hostpci` |
+| **Status pemakaian** | 🔴 **menganggur total** |
+
+> 🔴 Kedua T4 menyala dan memakan daya tapi **tidak dipakai siapa pun**.
+> `nouveau` tidak mendukung CUDA, jadi untuk kartu compute headless seperti T4
+> praktis tidak berguna. `nouveau` juga **menghalangi passthrough** — untuk
+> melempar T4 ke VM, `nouveau` harus di-blacklist dan kartunya di-bind ke
+> `vfio-pci`. Lihat [§12](#12-known-issues--risiko).
+
+### 3.5 Okupansi Slot PCIe
+
+Dari `dmidecode -t slot` — berguna saat merencanakan penambahan kartu (mis. NIC 10 GbE).
+
+| Slot | Tipe | Status | Isi |
+|---|---|---|---|
+| CPU SLOT1 | PCIe 4.0 x16 | ⚪ Available | — |
+| CPU SLOT2 | PCIe 4.0 x8 | ⚪ Available | — |
+| CPU SLOT3 | PCIe 4.0 x16 | ⚪ Available | — |
+| CPU SLOT4 | PCIe 4.0 x8 | ⚪ Available | — |
+| CPU SLOT5 | PCIe 4.0 x16 | ⚪ Available | — |
+| CPU SLOT6 | PCIe 4.0 x16 | 🟢 In Use | Tesla T4 (`01:00.0`) |
+| CPU SLOT7 | PCIe 4.0 x16 | 🟢 In Use | Tesla T4 (`81:00.0`) |
+| PCI-E M.2-M1 | M.2 Socket 3 | ⚪ Available | — |
+| PCI-E M.2-M2 | M.2 Socket 3 | 🟢 In Use | Lexar NM790 4TB (`02:00.0`) |
+
+**Lima slot PCIe masih kosong.** Kalau kartu tambahan tidak muncul di `lspci`
+*dan* slot-nya tetap `Available` di `dmidecode`, artinya BIOS belum melihatnya —
+periksa dudukan riser, bifurcation di BIOS, lalu coba slot x16 lain.
 
 ---
 
@@ -229,7 +409,30 @@ bukan native ZFS encryption. Konsekuensi operasional:
 
 - Pool **tidak akan otomatis online** setelah reboot sampai LUKS di-unlock.
 - Kunci / passphrase LUKS **wajib** ada di password manager — kalau hilang, 140 TB tidak bisa dibuka.
-- Prosedur unlock & urutan boot **belum terdokumentasi** — lihat [§12](#12-known-issues--risiko).
+- `/etc/crypttab` memetakan `crypt0`–`crypt10` lewat **UUID** (stabil terhadap
+  pergeseran huruf `sdX`), semuanya dengan opsi **`noauto`** — jadi unlock manual
+  setelah tiap reboot memang disengaja, bukan kesalahan konfigurasi.
+
+**Prosedur unlock setelah reboot** *(terverifikasi 2026-09-02)*:
+
+```bash
+read -rsp "Passphrase LUKS: " P; echo
+for i in $(seq 0 10); do
+  uuid=$(awk -v n="crypt$i" '$1==n{print $2}' /etc/crypttab | sed 's/UUID=//')
+  printf '%s' "$P" | cryptsetup luksOpen UUID="$uuid" "crypt$i" -
+done
+unset P
+
+ls /dev/mapper/crypt* | wc -l    # harus 11
+zpool import zfs-storage
+zpool status zfs-storage
+```
+
+> ⚠️ **Gejala kalau lupa unlock:** `zpool list` tidak menampilkan `zfs-storage`
+> sama sekali dan `zpool import` menjawab *"no pools available to import"* —
+> karena label ZFS berada **di dalam** container LUKS. Ini **bukan** kehilangan
+> data. Verifikasi disknya masih ada dengan `lsblk` dan `cryptsetup isLuks`.
+> Kejadian nyata: reboot 2026-09-02 02:08, pool offline sampai di-unlock manual.
 
 Layout partisi NVMe:
 
@@ -251,11 +454,17 @@ nvme0n1  3.7T  Lexar SSD NM790 4TB
 |---|---|---|---|---|---|---|---|
 | `zfs-storage` | **raidz2** 11× `crypt` (14 TB) | 140 T | 15.7 T | 124 T | 11% | ✅ tahan 2 disk mati | 🟢 ONLINE |
 | `backup-pool` | **single disk** `ata-OOS12000G_0000SW4L` | 10.9 T | 10.1 T | 779 G | **93%** | ❌ **tidak ada** | 🟢 ONLINE |
-| `nvme-scratch` | **single vdev** `nvme0n1p4` | 3.52 T | 2.60 T | 942 G | **73%** | ❌ tidak ada | 🟢 ONLINE |
-| `rpool` | **single vdev** `nvme0n1p3` | 198 G | 55.4 G | 143 G | 28% | ❌ tidak ada | 🟢 ONLINE |
+| `nvme-scratch` | **single vdev** `nvme0n1p4` | 3.52 T | **6.17 G** | 3.51 T | **0%** | ❌ tidak ada | 🟢 ONLINE |
+| `rpool` | **single vdev** `nvme0n1p3` | 198 G | 55.7 G | 142 G | 28% | ❌ tidak ada | 🟢 ONLINE |
 
 > ⚠️ Tiga dari empat pool **tanpa redundansi**, dan `rpool` + `nvme-scratch`
 > berbagi **satu NVMe fisik yang sama**. Satu NVMe mati = OS dan scratch hilang bersamaan.
+
+> **Perubahan sejak 2026-08-28:** `nvme-scratch` turun dari **73% → 0%**.
+> Isi lamanya (`Folder-IT` 1.3 T dan `vm-images` 1.4 T) sudah disalin ke
+> `zfs-storage/archive/` lalu sumbernya dihapus pada 2026-09-01, untuk
+> memberi ruang bagi disk VM 300. Jumlah file di salinan diverifikasi cocok
+> (14.683 dan 5 file) sebelum penghapusan.
 
 ### 6.2 Topologi `zfs-storage`
 
@@ -290,9 +499,18 @@ Kapasitas efektif yang dilaporkan ZFS: **±106 TB** (11.9 T terpakai + 94.6 T te
 |---|---|
 | `zfs_arc_max` | `214748364800` = **200 GiB** |
 
-> ⚠️ ARC max 200 GiB pada host 251 GiB, sementara VM mengalokasikan 72 GiB.
-> 200 + 72 = 272 GiB > 251 GiB. ARC memang menyusut di bawah tekanan,
-> tapi marginnya tipis saat VM 200 menyala — lihat [§12](#12-known-issues--risiko).
+> ⚠️ ARC max **masih 200 GiB** pada host 251 GiB, sementara alokasi VM kini
+> **136 GiB** (8 + 64 + 64) setelah VM 300 dibuat.
+> 200 + 136 = **336 GiB** jauh melebihi 251 GiB. ARC memang menyusut di bawah
+> tekanan, tapi host ini **tidak punya swap** — tidak ada bantalan kalau ARC
+> kalah cepat dari permintaan QEMU. Lihat [§12](#12-known-issues--risiko).
+>
+> Saran: turunkan ke 64 GiB.
+> ```bash
+> echo "options zfs zfs_arc_max=68719476736" > /etc/modprobe.d/zfs.conf
+> echo 68719476736 > /sys/module/zfs/parameters/zfs_arc_max   # langsung berlaku
+> update-initramfs -u -k all
+> ```
 
 ### 6.4 Riwayat scrub
 
@@ -301,9 +519,29 @@ Kapasitas efektif yang dilaporkan ZFS: **±106 TB** (11.9 T terpakai + 94.6 T te
 | `zfs-storage` | 2026-08-17 18:56 | 03:06:40 | ✅ 0 error |
 | `backup-pool` | 2026-08-16 05:00 | 13:53:31 | ✅ 0 error |
 | `nvme-scratch` | 2026-08-15 03:54 | 00:08:09 | ✅ 0 error |
-| `rpool` | ⚠️ **belum pernah tercatat** | — | — |
+| `rpool` | **2026-09-01 12:55** | 00:00:27 | ✅ 0 error |
 
 Semua pool melaporkan `errors: No known data errors`.
+
+> ✅ `rpool` di-scrub pertama kali pada 2026-09-01 — sebelumnya **belum pernah
+> sekali pun** sejak pool dibuat 2026-08-13. Hasilnya bersih (`repaired 0B`),
+> yang berarti OS dan disk VM utuh meskipun NVMe-nya mencatat **34 unsafe
+> shutdown**. Ini menutup temuan #13 pendataan sebelumnya.
+>
+> ⚠️ **Scrub otomatis belum terbukti jalan.** `zfs-scrub-monthly@.timer` dan
+> `zfs-scrub-weekly@.timer` keduanya `disabled`; yang aktif hanya cron Debian
+> (`/etc/cron.d/zfsutils-linux`) yang menembak **Minggu kedua tiap bulan** —
+> jadwal berikutnya **2026-09-13 00:24**, dan itu akan jadi kali pertamanya
+> (sistem baru dibangun 2026-08-13, setelah Minggu kedua Agustus lewat).
+> Cron itu juga men-scrub **keempat pool serentak**, padahal `backup-pool`
+> sendiri butuh ~14 jam. Lebih baik pakai timer per-pool bergiliran:
+>
+> ```bash
+> systemctl enable --now zfs-scrub-monthly@rpool.timer
+> systemctl enable --now zfs-scrub-monthly@nvme-scratch.timer
+> systemctl enable --now zfs-scrub-monthly@zfs-storage.timer
+> systemctl enable --now zfs-scrub-monthly@backup-pool.timer
+> ```
 
 ---
 
@@ -321,25 +559,35 @@ Semua pool melaporkan `errors: No known data errors`.
 | `zfs-storage/archive/TO_ANALISIS` | `/zfs-storage/archive/TO_ANALISIS` | 46.0 G | antrean analisis |
 | `zfs-storage/archive/backup-config` | `/zfs-storage/archive/backup-config` | 281 M | backup konfigurasi |
 | `zfs-storage/reference/software` | `/zfs-storage/reference/software` | 9.14 G | installer / software |
+| **`zfs-storage/vega-storage`** | `/zfs-storage/vega-storage` | 219 K | 🆕 data run PacBio Vega — **quota 10 T** |
 
 ### 7.2 Dataset `rpool` & lainnya
 
 | Dataset | Mount | Terpakai |
 |---|---|---|
-| `rpool/ROOT/pve-1` | `/` | 6.67 G |
+| `rpool/ROOT/pve-1` | `/` | 6.68 G |
 | `rpool/var-lib-vz` | `/var/lib/vz` | 27.5 G |
-| `rpool/data/vm-100-disk-0` | zvol VM 100 | 15.7 G |
+| `rpool/data/vm-100-disk-0` | zvol VM 100 | 16.0 G |
 | `rpool/data/vm-200-disk-1` | zvol VM 200 | 5.58 G |
 | `nvme-scratch/vm-200-disk-0` | zvol VM 200 (scsi1) | 56 K |
+| **`nvme-scratch/vm-300-disk-0`** | zvol VM 300 (scsi0, sparse 1 T) | 🆕 6.70 G |
+| **`nvme-scratch/vega-filesystem`** | `/nvme-scratch/vega-filesystem` | 🆕 6.17 G |
 | `backup-pool` | `/backup-pool` | **10.1 T** |
+
+> ⚠️ `nvme-scratch/vega-filesystem` berisi struktur direktori storage PVE
+> (`dump/ images/ import/ private/ snippets/ template/`) tapi **tidak terdaftar**
+> di `storage.cfg`. Sementara `vega-storage` yang terdaftar justru menunjuk ke
+> `/zfs-storage/vega-storage`. Dua konfigurasi setengah jadi yang tidak
+> terhubung — perlu diputuskan mana yang dipakai.
 
 ### 7.3 Storage terdaftar di Proxmox
 
 | Name | Type | Content | Status | Total | Pakai |
 |---|---|---|---|---|---|
 | `local` | dir (`/var/lib/vz`) | backup, vztmpl, import, iso | 🟢 active | 164 G | 16.8% |
-| `local-zfs` | zfspool (`rpool/data`) | rootdir, images (sparse) | 🟢 active | 158 G | 13.5% |
-| `nvme-scratch` | zfspool (`/nvme-scratch`) | images, rootdir (sparse) | 🟢 active | 3.5 T | **76.2%** |
+| `local-zfs` | zfspool (`rpool/data`) | rootdir, images (sparse) | 🟢 active | 158 G | 13.7% |
+| `nvme-scratch` | zfspool (`/nvme-scratch`) | images, rootdir (sparse) | 🟢 active | 3.5 T | **0.4%** |
+| **`vega-storage`** | dir (`/zfs-storage/vega-storage`) | images, rootdir | 🟢 active | **10 T** | 0.0% |
 
 `/etc/pve/storage.cfg`:
 
@@ -358,7 +606,19 @@ zfspool: nvme-scratch
 	content images,rootdir
 	mountpoint /nvme-scratch
 	sparse 1
+
+dir: vega-storage
+	path /zfs-storage/vega-storage
+	content images,rootdir
+	prune-backups keep-all=1
+	shared 0
 ```
+
+> ⚠️ `vega-storage` didaftarkan bertipe **`dir`** dengan content `images,rootdir` —
+> artinya untuk menyimpan **disk VM**, bukan data sekuensing yang dibaca dari
+> dalam VM. Kalau tujuannya 10 TB data run Vega, bentuk yang tepat adalah
+> dataset ZFS yang di-share ke VM lewat **virtiofs** (pola yang sudah dipakai
+> VM 200), atau didaftarkan sebagai `zfspool`, bukan `dir`.
 
 > ⚠️ **`zfs-storage` (140 TB) dan `backup-pool` (11 TB) tidak terdaftar sebagai
 > storage Proxmox.** Keduanya hanya diakses dari sisi host / lewat virtiofs.
@@ -373,8 +633,9 @@ zfspool: nvme-scratch
 
 | VMID | Nama | Status | vCPU | RAM | Boot disk | Tags |
 |---|---|---|---|---|---|---|
-| **100** | `dev-pipeline` | 🟢 running | 24 | 8 GiB | 32 G (`local-zfs`) | `automation`, `dev` |
+| **100** | `dev-pipeline` | ⚪ stopped | 24 | 8 GiB | 32 G (`local-zfs`) | `automation`, `dev` |
 | **200** | `dev-bioinfo` | ⚪ stopped | 24 | 64 GiB (balloon 16 GiB) | 100 G (`local-zfs`) | `bioinformatika`, `dev` |
+| **300** | **`vega`** 🆕 | ⚪ stopped | 16 *(pending 32)* | 64 GiB | 1 T (`nvme-scratch`) | *(belum ada tag)* |
 
 **VM 100 — `dev-pipeline`**
 
@@ -403,6 +664,43 @@ zfspool: nvme-scratch
 | **virtiofs** | `project-raw`, `project-results`, `reference` (semua `direct-io=1`) |
 | Guest agent | aktif |
 
+**VM 300 — `vega`** 🆕 — *host SMRT Link untuk sekuenser PacBio Vega*
+
+Dibuat 2026-09-01. Target: SMRT Link mode **single node** (analisis berjalan di
+dalam VM ini, tidak menyerahkan job ke Slurm `HPC-GPU`).
+
+| Field | Nilai |
+|---|---|
+| CPU | **16 core**, 1 socket — ⚠️ tipe **`x86-64-v2-AES`**, `[PENDING] cores: 32` |
+| Memory | 65536 MB (64 GiB), tanpa balloon |
+| Disk OS | `nvme-scratch:vm-300-disk-0` **1 T**, `iothread=1` (sparse, terpakai 6.70 G) |
+| NIC | `virtio` `BC:24:11:54:47:55` → `vmbr0`, `firewall=1` |
+| ISO terpasang | ⚠️ `ubuntu-24.04.4-**desktop**-amd64.iso` |
+| SCSI controller | `virtio-scsi-single` |
+| NUMA | 0 *(wajar — host NPS1, satu node)* |
+| Guest agent | belum diaktifkan |
+| virtiofs | ❌ belum ada — data 10 T belum tersambung ke VM |
+
+Perbandingan dengan syarat PacBio (kolom *SMRT Link single node*):
+
+| Komponen | Syarat PacBio | VM 300 | Status |
+|---|---|---|---|
+| CPU | 16 core / **32 thread** | 16 vCPU *(pending 32)* | ⚠️ perlu restart untuk berlaku |
+| RAM | 64 GB | 64 GiB | ✅ |
+| Local SSD | 1 TB | 1 T di `nvme-scratch` | ✅ |
+| Storage data | *(tidak diatur)* | `vega-storage` 10 T | 🟡 belum tersambung ke VM |
+
+> 🔴 **`cpu: x86-64-v2-AES` tidak punya AVX/AVX2.** Toolchain PacBio (`ccs`,
+> `pbmm2`, turunan minimap2) dikompilasi dengan vektorisasi AVX2 — binari yang
+> mensyaratkannya bisa mati dengan `SIGILL`. Bandingkan VM 200 yang memakai
+> `cpu: host`. Perbaikan: `qm set 300 --cpu host` (aman di sini karena node
+> standalone, tidak ada live migration yang dikorbankan).
+
+> ⚠️ **ISO-nya Ubuntu Desktop, bukan Server.** GNOME + snap memakan RAM/CPU dan
+> menambah permukaan serangan pada VM headless. Selain itu **matriks OS resmi
+> SMRT Link perlu diverifikasi** — belum tentu Ubuntu 24.04 didukung oleh versi
+> SMRT Link yang dikirim bersama Vega. Cek release notes sebelum instalasi.
+
 ### 8.2 LXC Container
 
 **Tidak ada container LXC.**
@@ -411,10 +709,14 @@ zfspool: nvme-scratch
 
 | Resource | Host | Teralokasi ke VM | Sisa |
 |---|---|---|---|
-| Thread CPU | 128 | 48 (24 + 24) | 80 |
-| RAM | 251 GiB | 72 GiB | 179 GiB *(dikurangi ARC hingga 200 GiB)* |
+| Thread CPU | 128 | 64 (24 + 24 + 16) · **80 bila VM 300 jadi 32** | 64–48 |
+| RAM | 251 GiB | **136 GiB** (8 + 64 + 64) | 115 GiB *(dikurangi ARC hingga 200 GiB)* |
 | Storage `local-zfs` | 158 G | ±21 G | — |
-| Storage `nvme-scratch` | 3.5 T | 1 T (zvol VM 200, sparse) | — |
+| Storage `nvme-scratch` | 3.5 T | 2 T sparse (VM 200 + VM 300) | 3.39 T aktual |
+| Storage `vega-storage` | 10 T (quota) | 0 | 10 T |
+
+> ⚠️ Ketiga VM **tidak boleh menyala bersamaan** dengan ARC di 200 GiB:
+> 136 GiB VM + 200 GiB ARC = 336 GiB pada host 251 GiB, tanpa swap.
 
 ### 8.4 Perintah pengelolaan
 

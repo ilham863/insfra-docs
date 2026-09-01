@@ -2,10 +2,21 @@
 
 > **Tipe Unit:** Bare-Metal Compute Server — 1 chassis fisik
 > **Status:** 🟢 Production
-> **Terakhir Diperbarui:** 2026-08-28
+> **Terakhir Diperbarui:** 2026-09-02
 > **PIC Node:** *(isi nama sysadmin)*
 > **Sumber Data:** auto-collect via SSH — `scripts/collect-hpc.sh`, 2026-08-28 15:00 WIB
 > · data BMC in-band (`ipmitool` FRU/SEL/SDR) 2026-08-28 15:40 WIB
+> · verifikasi jaringan & penyebab mount gagal, 2026-09-02 (§7.2, §14)
+
+> ⚠️ **Spesifikasi hardware di dokumen ini masih dari koleksi 2026-08-28.**
+> Pada 2026-09-02 node terverifikasi **menyala** (Cockpit di `:9090` melaporkan
+> hostname `HPC-GPU`), tapi **belum bisa dikoleksi ulang**: kunci admin
+> (`~/.ssh/id_proxmox`) ditolak untuk user `ilham` maupun `root`
+> (`Permission denied (publickey,password)`). Yang diperbarui pada tanggal itu
+> hanya bagian yang bisa diverifikasi dari luar — §7.2 dan §14.
+>
+> **Agar node ini bisa didata ulang otomatis**, pasang kunci publik admin:
+> `ssh-copy-id -i ~/.ssh/id_proxmox.pub ilham@192.168.18.178`
 > **Dokumen Terkait:** [server-changelog](../../track-record/server-changelog.md) · [maintenance-log](../../track-record/maintenance-log.md) · [SOP Eksekusi](../../docs/sop/sop-bioinformatics-execution.md) · [Panduan Penginputan](../../docs/penginputan-node.md)
 
 > **Peran node ini:** satu-satunya node komputasi. Terdaftar di Slurm cluster
@@ -305,14 +316,12 @@ ipmitool -I lanplus -H 192.168.18.119 -U <user> chassis identify 60
 |---|---|---|---|---|---|---|---|---|
 | 0 | **NVIDIA A100-SXM4-40GB** | 40.960 MiB | `1325023031983` | `0000:02:00.0` | `92.00.19.00.01` | 400 W | ✅ Enabled | node0 |
 | 1 | **NVIDIA A100-SXM4-40GB** | 40.960 MiB | `1323521112613` | `0000:2A:00.0` | `92.00.19.00.01` | 400 W | ✅ Enabled | node0 |
-| 2 | NVIDIA GeForce **RTX 5060 Ti** | 16.311 MiB | *(tidak ada)* | `0000:82:00.0` | `98.06.39.00.E1` | 180 W | ❌ N/A | node1 |
 
 UUID:
 
 ```
 GPU 0: GPU-967b70ac-e2bb-9a55-d52f-51a55beed9b4
 GPU 1: GPU-56ef0227-7048-7706-6e2f-f06e5359e7f8
-GPU 2: GPU-cd79c569-5fc9-b53d-2553-c1edb656be01
 ```
 
 ### 5.2 Topologi
@@ -321,7 +330,6 @@ GPU 2: GPU-cd79c569-5fc9-b53d-2553-c1edb656be01
         GPU0   GPU1   GPU2    CPU Affinity        NUMA
 GPU0     X     NODE   SYS     0-63,128-191        0
 GPU1    NODE    X     SYS     0-63,128-191        0
-GPU2    SYS    SYS     X      64-127,192-255      1
 ```
 
 > ⚠️ Kedua A100 berbentuk **SXM4** tapi terhubung lewat `NODE` (PCIe dalam satu
@@ -329,8 +337,6 @@ GPU2    SYS    SYS     X      64-127,192-255      1
 > artinya komunikasi antar-GPU jalan di PCIe, bukan NVLink. Perlu diverifikasi
 > fisik apakah NVLink bridge memang tidak terpasang / tidak aktif.
 >
-> `GPU2` di NUMA node berbeda (`SYS`) — jangan gabungkan RTX 5060 Ti dengan A100
-> dalam satu job multi-GPU; latensinya lewat interkoneksi antar-soket.
 
 ### 5.3 Catatan penggunaan
 
@@ -338,8 +344,6 @@ GPU2    SYS    SYS     X      64-127,192-255      1
   memakai GPU compute. Pemakaiannya kecil (4 MiB/GPU) tapi tidak semestinya ada
   di node komputasi headless.
 - Utilisasi saat pendataan: 0% di semua GPU; suhu 27–36 °C; daya 5–31 W.
-- RTX 5060 Ti **tanpa ECC** — jangan dipakai untuk perhitungan yang butuh integritas
-  numerik jangka panjang.
 
 ---
 
@@ -417,13 +421,35 @@ Klien terlihat sebagai `192.168.30.3` (jalur 10 GbE, MTU 9000).
 
 ### 7.2 Yang gagal mount
 
-| Target | Sumber | Status |
-|---|---|---|
-| `/mnt/t4-storage` | `192.168.18.113:/media/t4/96-Storage` | 🔴 **failed** |
-| `/media/t4-storage-nvme` | `192.168.30.2:/media/t4/NVME-3.6TB` | 🔴 **failed** |
+| Target | Sumber di `fstab` | Status | Penyebab |
+|---|---|---|---|
+| `/mnt/t4-storage` | `192.168.18.113:/media/t4/96-Storage` | 🔴 **failed** | ✅ **Ketemu** — `192.168.18.113` adalah **IP lama `T4-Storage`**. Export-nya masih ada, tapi sekarang dilayani dari **`192.168.18.193`** |
+| `/media/t4-storage-nvme` | `192.168.30.2:/media/t4/NVME-3.6TB` | 🔴 **failed** | ⚠️ Alamat `192.168.30.2` **sudah benar** (= `T4-Storage` di jalur 10 GbE) dan export-nya terdaftar. Penyebab masih perlu ditelusuri dari sisi server — lihat catatan di bawah |
 
-Keduanya terdaftar di `/etc/fstab` tapi unit systemd-nya `failed`. Perlu dicek
-apakah export-nya masih ada, atau entri fstab-nya sudah usang.
+**Diverifikasi 2026-09-02** dengan `showmount -e 192.168.18.193` dari `proxmox`:
+
+```
+/bio-pool            192.168.30.0/24
+/media/t4/NVME-3.6TB 192.168.30.0/24
+/media/t4/96-Storage 192.168.18.0/24
+```
+
+Perbaikan untuk `/mnt/t4-storage` — ganti alamat di `/etc/fstab`:
+
+```bash
+# 192.168.18.113  ->  192.168.18.193
+sudo sed -i 's/192\.168\.18\.113:/192.168.18.193:/' /etc/fstab
+sudo systemctl daemon-reload
+sudo mount /mnt/t4-storage
+findmnt /mnt/t4-storage
+```
+
+> ⚠️ **Sebelum mount, pastikan dulu sumbernya tidak kosong.** Di `T4-Storage`,
+> array `md126` dan `md127` terlihat **tidak ter-mount** saat pendataan, padahal
+> `/media/t4/96-Storage` tetap diekspor. Kalau direktori export kosong, mount
+> akan "berhasil" tapi menampilkan direktori hampa — kegagalan yang jauh lebih
+> menyesatkan daripada error. Lihat
+> [`t4-storage.md` §6](../storage-nodes/t4-storage.md#6-array--pool) (`KI-T10`).
 
 Isi `/etc/fstab` (baris jaringan):
 
@@ -433,8 +459,10 @@ Isi `/etc/fstab` (baris jaringan):
 192.168.30.2:/bio-pool /media/bio-pool nfs defaults,nofail,user,soft,timeo=30,retrans=2,x-systemd.automount,x-systemd.requires=network-online.target,x-systemd.idle-timeout=10min 0 0
 ```
 
-> **Catatan:** `192.168.30.2` (storage) dan `192.168.18.113` **belum didata**
-> di repo ini. Lihat [§14](#14-node-terkait-yang-belum-didata).
+> **Catatan:** `192.168.30.2` dan `192.168.18.113` **keduanya adalah `T4-Storage`**
+> — sudah didata di [`storage-nodes/t4-storage.md`](../storage-nodes/t4-storage.md).
+> `192.168.30.2` adalah kaki 10 GbE-nya, `192.168.18.193` kaki manajemennya, dan
+> `192.168.18.113` alamat lamanya yang sudah tidak dipakai.
 
 ---
 
@@ -703,17 +731,25 @@ Diurutkan dari dampak paling besar. Semua temuan berasal dari pengumpulan data
 
 ---
 
-## 14. Node Terkait yang Belum Didata
+## 14. Node Terkait
 
-Pendataan node ini memunculkan tiga host lain yang belum ada dokumennya:
+Diperbarui 2026-09-02 — dua dari tiga host sudah teridentifikasi.
 
-| Host | Peran | Ditemukan dari |
+| Host | Peran | Status |
 |---|---|---|
-| `pipeline` — `192.168.18.194` | **Slurm controller** (`slurmctld`) cluster `bioinfo` | `slurm.conf` |
-| `192.168.30.2` | Storage NFS — export `/bio-pool` (20 T) dan `/media/t4/NVME-3.6TB` | mount aktif + fstab |
-| `192.168.18.113` | Storage NFS — export `/media/t4/96-Storage` | fstab (mount gagal) |
+| `192.168.30.2` | Storage NFS — export `/bio-pool` (21,7 T) & `/media/t4/NVME-3.6TB` | ✅ **= `T4-Storage`**, sudah didata → [t4-storage.md](../storage-nodes/t4-storage.md) |
+| `192.168.18.113` | Storage NFS — export `/media/t4/96-Storage` | ✅ **= `T4-Storage`** (alamat lama, sekarang `192.168.18.193`) |
+| `pipeline` — `192.168.18.194` | **Slurm controller** (`slurmctld`) cluster `bioinfo` | 🔴 **masih belum didata & tidak merespons** |
 
-Ketiganya perlu didata mengikuti [`docs/penginputan-node.md`](../../docs/penginputan-node.md).
+> 🔴 **`192.168.18.194` tidak merespons** di port 22/80/443, baik dari laptop
+> admin maupun dari dalam LAN server (`proxmox`). Padahal `slurm.conf` di node
+> ini masih menetapkan `SlurmctldHost=pipeline(192.168.18.194)`.
+>
+> Ini menjelaskan temuan di [§13](#13-known-issues--risiko) bahwa node dipakai
+> sebagai **server interaktif bersama** alih-alih lewat `sbatch`: selama
+> `slurmctld` tidak terjangkau, penjadwalan memang tidak bisa jalan.
+> **Pastikan dulu apakah host ini mati permanen atau sementara** — ini menentukan
+> apakah Slurm perlu di-hosting ulang (mis. `slurmctld` dipindah ke node ini).
 
 ---
 
