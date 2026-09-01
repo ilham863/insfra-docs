@@ -40,6 +40,58 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `inventory/network-devices/` — **kategori baru: perangkat jaringan**, karena switch
+  dan ONT terbukti sama kritisnya dengan server:
+  - `zyxel-switch.md` — **switch inti `192.168.18.250`** (MAC `1C:74:0D:FF:DA:64`).
+    **Seluruh** trafik lewat sini: internet dari ONT, LAN server 1 GbE, jalur data
+    SFP+ 10 GbE, dan ketiga BMC. Memuat peta port, 10 pertanyaan yang belum terjawab
+    (4 di antaranya memblokir rencana ingress), dan 9 temuan Known Issues.
+  - `ont-huawei.md` — **ONT `192.168.18.1`** (MAC `78:5C:5E:C5:9A:72`, OUI Huawei),
+    gateway + DHCP + DNS, dikelola ISP. Memuat checklist audit port-forward/UPnP/DMZ
+    dan cara verifikasi dari luar dengan `nmap`.
+- `README.md` §2.6 — **rancangan jaringan yang aman**: pemisahan VLAN 10/20/30/40
+  (mgmt / data / IPMI / klien) beserta matriks izin antar-VLAN, dan tabel lapisan
+  pertahanan yang belum ada.
+- `README.md` §2.7 — **ringkasan 10 kekurangan** infrastruktur, diurutkan dari yang
+  paling menentukan.
+- `inventory/network-map.md` §5A — **jalur akses admin lewat Cloudflare Zero Trust**
+  (WARP, `100.96.0.4` → rute `192.168.18.0/24`). Dipastikan **connector-nya bukan di
+  `proxmox`** (`cloudflared`/`warp-svc`/`tailscaled`/`zerotier` semuanya inactive) —
+  lokasinya masih perlu dikonfirmasi dari dashboard Cloudflare.
+- `inventory/proxmox-nodes/proxmox.md` §2.1–§2.5 — **data BMC in-band** (`ipmitool`
+  lewat `/dev/ipmi0`, tanpa kredensial lewat jaringan): **serial board asli
+  `ZM253S601908`** (DMI hanya `0123456789`), tanggal produksi board 2025-03-29,
+  konfirmasi **2 PSU terpasang**, sensor suhu (CPU 54 °C, kedua Tesla T4 47–48 °C),
+  status fan, dan System Event Log.
+- **Temuan pada `PROXMOX-2U`** — SEL mencatat `Unrecoverable IDE device failure`
+  **berulang** (10 dari 15 entri terakhir), terakhir tepat pada boot 2026-09-02
+  02:08:14. Belum berdampak (pool ONLINE, SMART semua PASSED) tapi perlu ditelusuri.
+  Juga: hanya **2 dari 7 slot fan** yang memberi pembacaan.
+- `README.md` §2 — **arsitektur ditulis ulang total**, dipisah menjadi
+  **§2.1 keadaan sekarang** dan **§2.2 arsitektur target: `PROXMOX-2U` sebagai
+  *ingress data***. Dilengkapi diagram ASCII + Mermaid, kontrak alur data 7 tahap
+  (§2.3), pembagian peran node (§2.4), dan daftar pekerjaan menuju target (§2.5).
+  Diagram lama yang memakai node karangan (`login-01`, `hpc-node-01..NN`,
+  `storage-node-01`) **dihapus** dan diganti dengan tiga server yang sungguh ada.
+- `inventory/network-map.md` §2.2 — **rencana teknis menyambungkan `PROXMOX-2U`
+  ke jalur data 10 GbE** (`192.168.30.4`, MTU 9000): tabel kelayakan, langkah
+  penerapan, dan uji jumbo frame. Kelayakan slot **sudah diverifikasi** —
+  `dmidecode -t slot` menunjukkan 5 slot PCIe kosong di proxmox
+  (`CPU SLOT1/3/5` x16, `CPU SLOT2/4` x8).
+- `inventory/storage-nodes/t4-storage.md` — **pendataan `T4-Storage`**, server ketiga
+  yang sebelumnya sama sekali belum terdata. Supermicro H12SSL-i, 128 thread,
+  128 GB RAM, Ubuntu 22.04.5, **41 disk fisik / ± 424,6 TB raw** (array mdadm
+  `md126` ± 80 TB & `md127` ± 96 TB, plus ZFS `bio-pool` 21,7 TB), BMC di
+  `192.168.18.200`. Merangkap sebagai **server monitoring** (Prometheus 2.52.0 +
+  Grafana 12.1.1). Mencakup 20 temuan Known Issues terprioritas.
+  ⚠️ Dikumpulkan **jarak jauh tanpa SSH** — lewat `node_exporter`, `smartctl_exporter`,
+  `showmount`, fingerprint TLS, dan tabel ARP; §10 mendaftar apa yang masih kosong.
+- **Temuan kritis pada `T4-Storage`** — `/dev/sdj` (Seagate BarraCuda `ST8000DM004`,
+  serial `ZR15WNCX`) berstatus **SMART FAILED**: 258.448 reallocated sector
+  (ambang 10), 3.608 pending, 3.608 offline-uncorrectable. Node juga memakai
+  **14 disk SMR desktop di array paritas**.
+- Dokumentasi **switch Zyxel `192.168.18.250`** di `inventory/network-map.md` §5.1 —
+  pembawa jalur SFP+ 10 GbE antara `T4-Storage` dan `HPC-GPU`, beserta topologinya.
 - `inventory/hpc-nodes/hpc-gpu.md` §2.1–§2.5 — **data dari BMC** (in-band `ipmitool`,
   tanpa mengirim kredensial IPMI lewat jaringan): identitas chassis dari FRU,
   daftar akun BMC, status chassis & daya, sensor suhu/fan, dan System Event Log.
@@ -99,9 +151,45 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - *(belum ada)*
 
 ### Fixed
-- *(belum ada)*
+- `inventory/network-map.md` §3 — **koreksi enam kesimpulan discovery 2026-08-28
+  yang terbukti keliru**: `192.168.18.200` bukan "server web/aplikasi" melainkan
+  **BMC Supermicro milik `T4-Storage`**; `192.168.18.250` bukan "appliance/printer"
+  melainkan **switch Zyxel** pembawa jalur SFP+; `192.168.18.193:9090` bukan
+  Cockpit melainkan **Prometheus**; `192.168.18.113` bukan host hilang melainkan
+  **IP lama `T4-Storage`**; dan perubahan host key di `.200` bukan tanda mesin
+  di-install ulang, melainkan karena SSH itu milik BMC, bukan OS.
+- `inventory/hpc-nodes/hpc-gpu.md` §7.2 — **penyebab mount `/mnt/t4-storage` gagal
+  ditemukan**: `/etc/fstab` menunjuk `192.168.18.113` sedangkan export
+  `/media/t4/96-Storage` kini dilayani dari `192.168.18.193`. Perintah perbaikan disertakan.
+- `inventory/hpc-nodes/hpc-gpu.md` §14 — dua dari tiga "node terkait yang belum didata"
+  ternyata **satu host yang sama** (`T4-Storage`), bukan host terpisah.
+- `inventory/proxmox-nodes/proxmox.md` — ditandai bahwa **VM 300 `vega` sudah dihapus**
+  (`qmdestroy:300` pada 2026-09-02 02:29:45), sehingga seluruh bagian bertanda 🆕
+  tentang VM tersebut kini usang. Angka `nvme-scratch` dikoreksi 12.9 G → **6.17 G**.
+- `README.md` §4 — index node dilengkapi **kolom IPMI/BMC** dan ketiga server yang
+  benar-benar menyala, ditambah diagram topologi ringkas.
 
 ### Security
+- 🔴 **`T4-Storage` — kredensial IPMI BMC (`192.168.18.200`) bocor dalam bentuk
+  plaintext** di konfigurasi `ipmi_exporter`, terbaca lewat Prometheus `:9090`
+  yang **terbuka tanpa autentikasi** dari seluruh LAN server.
+  **Kredensialnya sengaja tidak ditulis di repo ini.** Wajib dirotasi, lalu
+  dipindah ke file kredensial `ipmi_exporter` ber-permission `0600` — bukan
+  parameter URL. Lihat `t4-storage.md` `KI-T02`.
+- 🔴 **Monitoring seluruh fleet tidak berfungsi** — keempat job Prometheus masih
+  menunjuk IP lama `192.168.18.113` dan berstatus `down`, sehingga tidak ada alarm
+  yang berbunyi. Inilah sebabnya disk `/dev/sdj` yang SMART FAILED tidak ketahuan.
+- 🔴 **Switch Zyxel `192.168.18.250` tidak punya satu pun jalur manajemen
+  terenkripsi** — hanya Telnet (`23`) dan HTTP (`80`), keduanya plaintext; tanpa
+  SSH, tanpa HTTPS. `SNMP 161/udp` juga terbuka. Kredensial admin switch bisa
+  disadap dari LAN, dan pemegangnya menguasai seluruh jaringan.
+- 🔴 **Seluruh infrastruktur bergantung pada satu switch tanpa redundansi** —
+  internet, LAN server, jalur data 10 GbE, dan ketiga BMC semuanya lewat
+  `192.168.18.250`. Switch mati = semuanya mati serentak.
+- 🔴 **Ketiga BMC (`.13`, `.119`, `.200`) satu segmen dengan LAN data**, satu hop di
+  belakang ONT yang dikelola ISP. Belum diverifikasi apakah ONT punya port-forward,
+  UPnP, atau DMZ yang bisa mengekspos port `623`/`5900` ke internet — checklist
+  auditnya di `ont-huawei.md` §5.
 - Terdokumentasi dari pendataan `proxmox` (belum ditindaklanjuti, lihat §12 dokumen node):
   firewall Proxmox belum aktif, IPMI satu segmen dengan jaringan data via DHCP,
   SNMP BMC masih community `public`, `PermitRootLogin yes`, hanya ada `root@pam`
