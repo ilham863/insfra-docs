@@ -40,12 +40,28 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
-- `inventory/proxmox-nodes/vm-101-smrtlink.md` — **dokumen VM 101, host SMRT Link
-  untuk sekuenser PacBio Vega**. Memuat topologi lengkap (internet → ONT → Zyxel →
-  proxmox → VM → instrumen), alur data & alur internet Vega, spesifikasi VM,
-  layout storage, standar konfigurasi dalam VM (netplan + `ip_forward` + `nftables`
-  NAT/isolasi), catatan SMRT Link, jalur akses HPC beserta dua ganjalannya,
-  9 temuan risiko, dan checklist penerapan.
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` **ditulis ulang dengan keadaan nyata**
+  setelah OS terinstall dan jaringan dikonfigurasi. Kini memuat: nama interface
+  sebenarnya (`enp6s18`/`enp6s19`), hostname `smrtlink`, mount `/data/smrtlink`
+  berbasis UUID, aturan `nftables` lengkap **beserta counter yang membuktikan
+  NAT dan isolasi bekerja**, daftar paket/akun/direktori yang dipasang, tabel
+  kesesuaian dengan syarat resmi SMRT Link v26.2, tabel port dari dokumen vendor,
+  runbook instalasi, dan 11 temuan risiko.
+- **VM 101 disiapkan penuh untuk SMRT Link v26.2** (rujukan: *SMRT Link software
+  installation guide v26.2*, PN 103-891-700):
+  - Ubuntu 24.04.4 LTS, hostname **`smrtlink`** + `/etc/hosts` konsisten — penting
+    karena SMRT Link **tidak tahan perubahan hostname**.
+  - Akun layanan **`smrtanalysis`** (dokumen melarang install sebagai `root`).
+  - `ulimit nofile` **1024 → 8192** lewat `limits.d` (disyaratkan dokumen).
+  - Direktori `jobs_root` (HDD 7,8 T), `db_datadir` & `tmp_dir` (SSD lokal,
+    dokumen melarang NFS untuk keduanya). `$SMRT_ROOT` **sengaja belum dibuat**.
+  - Paket: `qemu-guest-agent`, `openssh-server`, `nftables` — semuanya `enabled`.
+- **Jaringan instrumen Vega selesai & terverifikasi**: `192.168.18.60/24` (LAN) +
+  `192.168.50.1/24` (gateway Vega), `ip_forward=1`, masquerade, dan isolasi
+  `drop` ke `192.168.18.0/24`, `192.168.30.0/24`, `192.168.0.0/22`. Counter
+  membuktikan: DNS 43 paket, internet 313 paket, masquerade 225 paket lewat.
+- Disk 7,81 TiB dipindahkan dari automount GNOME (`/media/vega/Storage-Vega`,
+  tidak permanen) ke **`/data/smrtlink`** dengan entri `fstab` berbasis UUID + `nofail`.
 - **Storage PVE baru di `PROXMOX-2U`** — menutup temuan lama bahwa `zfs-storage`
   (140 TB) tidak terdaftar di Proxmox:
   - **`vm-hdd`** — `zfspool` di `zfs-storage/vm-disks`, quota **10 TiB**,
@@ -186,6 +202,16 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - *(belum ada)*
 
 ### Fixed
+- **Koreksi: Ubuntu 24.04 ternyata DIDUKUNG SMRT Link v26.2.** Kekhawatiran yang
+  dicatat sebelumnya (`KI-V07`) tidak terbukti — dokumen resmi halaman 5
+  mencantumkan Rocky 9/10 dan **Ubuntu 22.04 & 24.04**. Tidak perlu install ulang.
+- **Koreksi aturan firewall segmen Vega.** Versi awal memblokir seluruh
+  `192.168.18.0/24` sementara DNS instrumen justru diarahkan ke `192.168.18.1` —
+  akibatnya `ping` ke IP jalan tapi semua nama domain mati. Ditambahkan izin
+  sesempit mungkin (satu alamat, port 53 saja) **di atas** aturan blok; seluruh
+  BMC tetap tertutup dari segmen instrumen.
+- Aturan DNAT `8443 -> 192.168.50.10:443` **dihapus** — dipasang spekulatif
+  sebelum dokumen vendor tersedia, dan ternyata tidak dipakai SMRT Link.
 - `inventory/proxmox-nodes/proxmox.md` — diselaraskan dengan keadaan setelah
   perubahan: §3.3 (`nic1` kini slave `vmbr1`, baris `vmbr1` ditambahkan), §7.3
   (storage `vm-hdd` & `pve-backup`, plus catatan bahwa `vega-storage` kini jadi

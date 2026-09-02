@@ -1,416 +1,482 @@
 # VM 101 — SMRT Link / PacBio Vega (di `PROXMOX-2U`)
 
 > **Tipe Unit:** Virtual Machine (KVM) di atas [`proxmox`](proxmox.md) — bukan unit fisik
-> **Status:** 🔵 Staging — VM sudah dibuat, **OS belum diinstall**
+> **Status:** 🔵 **Staging** — OS & jaringan siap, **SMRT Link belum diinstall**
 > **Terakhir Diperbarui:** 2026-09-02
 > **PIC:** *(isi)*
-> **Sumber Data:** dibuat & diverifikasi langsung via `qm` di host, 2026-09-02
-> **Dokumen Terkait:** [proxmox](proxmox.md) · [network-map](../network-map.md) · [zyxel-switch](../network-devices/zyxel-switch.md) · [hpc-gpu](../hpc-nodes/hpc-gpu.md) · [README §2.2](../../README.md#22-arsitektur-target--proxmox-sebagai-ingress-data)
+> **Sumber Data:** dibuat & dikonfigurasi langsung via `qm` dan **QEMU guest agent** dari host, 2026-09-02
+> **Rujukan Vendor:** *SMRT Link software installation guide (v26.2)*, PN 103-891-700 Ver. 01 (Agustus 2026)
+> **Dokumen Terkait:** [proxmox](proxmox.md) · [network-map](../network-map.md) · [zyxel-switch](../network-devices/zyxel-switch.md) · [ont-huawei](../network-devices/ont-huawei.md) · [hpc-gpu](../hpc-nodes/hpc-gpu.md)
 
 > **Peran VM ini:** menjalankan **SMRT Link** untuk sekuenser **PacBio Vega**,
-> sekaligus menjadi **gateway/NAT** bagi instrumen dan **jalur akses ke HPC**.
-> Ini adalah perwujudan pertama dari desain *ingress data* di
-> [README §2.2](../../README.md#22-arsitektur-target--proxmox-sebagai-ingress-data):
-> data dari sekuenser masuk lewat satu pintu di `PROXMOX-2U`, bukan langsung
-> mendarat di storage analisis.
+> sekaligus **gateway/NAT** bagi instrumen dan **jalur akses ke HPC**.
+> Ini perwujudan pertama desain *ingress data* di
+> [README §2.2](../../README.md#22-arsitektur-target--proxmox-sebagai-ingress-data).
 
 ---
 
-## 1. Topologi
+## 1. Ringkasan Status
+
+| Bagian | Status |
+|---|---|
+| VM dibuat, disk & NIC terpasang | ✅ selesai |
+| Ubuntu 24.04.4 LTS terinstall | ✅ selesai |
+| Jaringan LAN + segmen Vega + NAT | ✅ **selesai & terverifikasi jalan** |
+| Disk data 7,8 TB ter-mount permanen | ✅ selesai |
+| Prasyarat SMRT Link (user, ulimit, locale, NTP, direktori) | ✅ selesai |
+| **Installer SMRT Link** | 🔴 **belum ada di VM** — harus diunduh dari akun PacBio |
+| **SMRT Link terinstall** | 🔴 belum |
+| Instrumen Vega tersambung | 🔴 belum |
+| Backup VM terjadwal | 🔴 belum |
+
+---
+
+## 2. Topologi
 
 ```
                               ☁ INTERNET
                                    │
-                        ┌──────────┴───────────┐
-                        │   ONT Huawei HG8245  │  192.168.18.1
-                        └──────────┬───────────┘
+                        ONT Huawei HG8245  192.168.18.1
                                    │
                         Zyxel MGS3520-28FX  e0/0/3
                                    │  1 GbE
-                        ┌──────────┴───────────┐
-                        │   PROXMOX-2U host    │  192.168.18.190
-                        │   nic0 ── vmbr0      │
-                        └──────────┬───────────┘
-                                   │
+                        PROXMOX-2U host  192.168.18.190
+                                   │  nic0 ── vmbr0
    ╔═══════════════════════════════╧════════════════════════════════════╗
-   ║                    VM 101  —  SMRT Link                            ║
-   ║              32 vCPU · 64 GB RAM · Ubuntu 24.04 Desktop            ║
+   ║                 VM 101  —  hostname: smrtlink                      ║
+   ║           32 vCPU · 64 GB RAM · Ubuntu 24.04.4 LTS                 ║
    ║                                                                    ║
-   ║   net0 (ens18) ── vmbr0 ── 192.168.18.60/24                        ║
-   ║        └─► internet · akses HPC-GPU · akses T4-Storage             ║
+   ║   enp6s18 ── vmbr0 ── 192.168.18.60/24   gw .18.1  dns .18.1       ║
+   ║        └─► internet · UI SMRT Link · akses HPC-GPU & T4-Storage    ║
    ║                                                                    ║
-   ║   net1 (ens19) ── vmbr1 ── 192.168.50.1/24   ◄── GATEWAY VEGA      ║
-   ║        └─► NAT keluar · isolasi ke arah LAN                        ║
+   ║   enp6s19 ── vmbr1 ── 192.168.50.1/24    ◄── GATEWAY VEGA          ║
+   ║        └─► NAT keluar · isolasi ke arah LAN & BMC                  ║
    ║                                                                    ║
-   ║   scsi0  1000 GiB SSD  (nvme-scratch)  → OS + SMRT Link + DB       ║
-   ║   scsi1  7,81 TiB HDD  (vm-hdd)        → data run                  ║
+   ║   /            1000 GiB SSD (nvme-scratch) → OS + SMRT Link + DB   ║
+   ║   /data/smrtlink  7,8 TiB HDD (vm-hdd)     → data run & jobs_root  ║
    ╚═══════════════════════════════╤════════════════════════════════════╝
                                    │
-                        ┌──────────┴───────────┐
-                        │  PROXMOX-2U  nic1    │  ⚠️ host TIDAK punya IP
-                        │       vmbr1          │     di bridge ini
-                        └──────────┬───────────┘
-                                   │  kabel LAN langsung
-                        ┌──────────┴───────────┐
-                        │   PacBio Vega        │  192.168.50.10/24
-                        │   (sekuenser)        │  gw 192.168.50.1
-                        └──────────────────────┘
+                        PROXMOX-2U nic1 ── vmbr1   ⚠️ host tanpa IP
+                                   │
+                        [media converter] ──FO── [media converter]
+                                   │
+                        PacBio Vega  192.168.50.10/24  gw 192.168.50.1
 ```
 
-### 1.1 Alur data
+> **Media converter bersifat Layer 1 — transparan.** Ia tidak mengubah apa pun
+> soal IP, routing, atau NAT. Bagi jaringan, rangkaian RJ45→FO→RJ45 itu identik
+> dengan kabel LAN panjang. Konfigurasi di dokumen ini berlaku sama persis.
+
+### 2.1 Alur internet Vega (terverifikasi jalan)
 
 ```
-Vega ──run data──► VM 101 (SMRT Link)
-                      │
-                      ├── scsi1 7,81 TiB  ← data run mendarat di sini
-                      │
-                      ├── arsip ──► zfs-storage/archive  (di host yang sama)
-                      │
-                      └── analisis ──► HPC-GPU 192.168.18.178
-                                        ⚠️ sekarang lewat 1 GbE — lihat §7
-```
-
-### 1.2 Alur internet Vega
-
-```
-Vega 192.168.50.10
-   │  gateway 192.168.50.1
-   ▼
-VM ens19 ──[ip_forward=1]──► VM ens18 ──[masquerade]──► 192.168.18.60
-                                                              │
-                                                              ▼
-                                                   ONT 192.168.18.1 ──► internet
+Vega 192.168.50.10  ──gw 192.168.50.1──►  enp6s19
+                                              │ ip_forward = 1
+                                              ▼
+                                          enp6s18 ──masquerade──► 192.168.18.60
+                                                                        │
+                                                              ONT 192.168.18.1 ──► internet
 ```
 
 > **ONT tidak perlu route apa pun ke `192.168.50.0/24`.** Karena memakai
-> *masquerade*, semua paket Vega keluar dengan alamat asal `192.168.18.60` —
-> bagi ONT seolah-olah VM itu sendiri yang mengakses internet.
+> *masquerade*, seluruh paket Vega keluar beralamat asal `192.168.18.60`.
 
 ---
 
-## 2. Spesifikasi VM
+## 3. Spesifikasi VM
 
 | Field | Nilai |
 |---|---|
 | **VMID** | `101` |
-| **Nama** | `ubuntu24-desktop` |
+| **Nama di PVE** | `ubuntu24-desktop` |
+| **Hostname OS** | **`smrtlink`** *(diubah dari `vega-Standard-PC-Q35-ICH9-2009`)* |
 | **Tags** | `desktop`, `ubuntu`, `vega` |
-| **Status** | ⚪ stopped — OS belum diinstall |
+| **OS** | **Ubuntu 24.04.4 LTS**, kernel `6.17.0-14-generic` |
 | **vCPU** | **32** (`sockets 1` × `cores 32`), `cpu: host` |
-| **RAM** | **64 GiB** (`memory 65536`), **ballooning off** (`balloon 0`) |
-| **BIOS** | OVMF (UEFI), `pre-enrolled-keys=0` — Secure Boot **off** |
-| **Machine** | `q35` |
-| **SCSI controller** | `virtio-scsi-single` |
-| **VGA** | `std` |
-| **Guest agent** | aktif (`agent: enabled=1`) — perlu `qemu-guest-agent` di dalam VM |
-| **ISO** | `ubuntu-24.04.4-desktop-amd64.iso` |
-| **Boot order** | `ide2` (CD) → `scsi0` |
+| **RAM** | **64 GiB**, ballooning **off** |
+| **BIOS** | OVMF (UEFI), Secure Boot off, `machine q35` |
+| **SCSI** | `virtio-scsi-single` |
+| **Guest agent** | ✅ aktif — dipakai untuk administrasi dari host tanpa SSH |
 
-> **Soal "16 core / 32 thread":** Proxmox tidak punya opsi `threads` — yang
-> dihitung jumlah vCPU. 32 vCPU memberi kapasitas komputasi yang setara.
-> Kalau guest perlu benar-benar *melihat* topologi 16c×2t, tambahkan
-> `args: -smp 32,sockets=1,cores=16,threads=2` — kosmetik, bukan performa.
+### 3.1 Disk
 
----
-
-## 3. Storage
-
-| Disk | Storage PVE | Backing ZFS | Ukuran | Opsi | Peruntukan |
-|---|---|---|---|---|---|
-| `scsi0` | `nvme-scratch` | `nvme-scratch/vm-101-disk-0` | **1000 GiB** | `ssd=1`, `discard=on`, `iothread=1` | OS + instalasi SMRT Link + database |
-| `scsi1` | **`vm-hdd`** | `zfs-storage/vm-disks/vm-101-disk-0` | **7,81 TiB** | `discard=on`, `iothread=1`, `volblocksize 64K` | Data run PacBio |
-| `efidisk0` | `nvme-scratch` | `nvme-scratch/vm-101-disk-1` | 1 MiB | `efitype=4m` | Variabel UEFI |
-
-### 3.1 Storage PVE yang dibuat untuk ini
-
-| Nama | Tipe | Dataset | Quota | Content |
+| Disk | Storage PVE | Ukuran | Mount | Peruntukan |
 |---|---|---|---|---|
-| **`vm-hdd`** | `zfspool` | `zfs-storage/vm-disks` | **10 TiB** | `images`, `rootdir` — `sparse`, `blocksize 64k` |
-| **`pve-backup`** | `dir` | `zfs-storage/backup` | **20 TiB** | `backup` — retensi 7 harian / 4 mingguan / 3 bulanan |
+| `scsi0` | `nvme-scratch` | 1000 GiB | `/` (`/dev/sda2`, 983 G) | OS + SMRT Link + database |
+| `scsi1` | **`vm-hdd`** | 7,81 TiB | **`/data/smrtlink`** (`/dev/sdb`, ext4) | Data run & `jobs_root` |
+| `efidisk0` | `nvme-scratch` | 1 MiB | — | Variabel UEFI |
 
-```bash
-zfs create -o quota=10T zfs-storage/vm-disks
-zfs create -o quota=20T -o compression=zstd-3 zfs-storage/backup
-pvesm add zfspool vm-hdd --pool zfs-storage/vm-disks --content images,rootdir --sparse 1 --blocksize 64k
-pvesm add dir pve-backup --path /zfs-storage/backup --content backup \
-        --prune-backups keep-daily=7,keep-weekly=4,keep-monthly=3
+`/etc/fstab` — memakai **UUID**, bukan `/dev/sdX`, dan `nofail` agar boot tidak
+tertahan bila disk belum tersedia:
+
+```
+UUID=9691cdad-56b0-44d3-bd0b-d3e8f1ab0775 /data/smrtlink ext4 defaults,noatime,nofail 0 2
 ```
 
-> **Kenapa disk 7,81 TiB padahal quota 10 TiB:** `zfs-storage` itu **raidz2 11 disk**,
-> yang menambah paritas ± 25%. Disk 10 TiB yang terisi penuh akan memakan
-> ± 12,5 TiB dan **menabrak quota sebelum penuh**. 7,81 TiB dipilih agar benar-benar
-> muat. Kalau ingin guest melihat 10 TB utuh:
-> ```bash
-> zfs set quota=13T zfs-storage/vm-disks
-> qm resize 101 scsi1 +2200G
-> ```
-
-> **Kenapa `volblocksize 64K`, bukan default 16K:** pada raidz2 selebar 11 disk
-> dengan `ashift=12`, blok 16K menimbulkan padding besar. 64K memangkas overhead
-> itu secara signifikan untuk beban tulis berkas besar seperti data sekuenser.
+> Sebelumnya disk ini ter-mount di `/media/vega/Storage-Vega` lewat automount
+> GNOME — **tidak permanen** dan bergantung sesi desktop. Sudah dipindahkan.
 
 ---
 
 ## 4. Jaringan
 
-| Interface VM | MAC | Bridge | NIC fisik | Alamat (rencana) | Fungsi |
-|---|---|---|---|---|---|
-| `net0` → `ens18` | `BC:24:11:FD:2A:12` | `vmbr0` | `nic0` (bersama host) | **`192.168.18.60/24`** | LAN, internet, akses HPC |
-| `net1` → `ens19` | `BC:24:11:0E:E2:7A` | **`vmbr1`** | **`nic1`** (khusus) | **`192.168.50.1/24`** | Gateway segmen Vega |
-
-`vmbr1` di host — **sengaja tanpa IP**, murni bridge L2 supaya VM yang jadi gateway:
-
-```
-auto vmbr1
-iface vmbr1 inet manual
-	bridge-ports nic1
-	bridge-stp off
-	bridge-fd 0
-```
-
-> ⚠️ **Verifikasi `192.168.18.60` di luar rentang DHCP ONT**, atau buat reservasi.
-> Kalau tidak, suatu saat akan bentrok dengan perangkat lain.
-
-> **Kenapa Vega diberi segmen sendiri, bukan dicolok ke LAN utama:** instrumen
-> sekuenser menjalankan firmware vendor yang jarang di-patch, sedangkan LAN utama
-> adalah tempat **ketiga BMC** berada — kendali setara akses fisik ke seluruh server.
-> Dengan segmen terpisah, seluruh trafik instrumen melewati satu titik yang bisa
-> dikendalikan dan dicatat.
-
----
-
-## 5. Konfigurasi di Dalam VM (standar)
-
-Belum diterapkan — VM belum diinstall. Cek nama interface dulu dengan `ip -br link`.
-
-### 5.1 Alamat IP — `/etc/netplan/01-smrtlink.yaml`
-
-```yaml
-network:
-  version: 2
-  ethernets:
-    ens18:
-      dhcp4: false
-      addresses: [192.168.18.60/24]
-      routes: [{to: default, via: 192.168.18.1}]
-      nameservers: {addresses: [192.168.18.1]}
-    ens19:
-      dhcp4: false
-      addresses: [192.168.50.1/24]
-```
-
-```bash
-sudo chmod 600 /etc/netplan/01-smrtlink.yaml
-sudo netplan apply
-```
-
-### 5.2 Routing — `/etc/sysctl.d/99-vega.conf`
-
-```
-net.ipv4.ip_forward = 1
-```
-
-### 5.3 NAT & isolasi — `/etc/nftables.conf`
-
-```nft
-#!/usr/sbin/nft -f
-flush ruleset
-
-table inet vega {
-  chain input {
-    type filter hook input priority 0; policy accept;
-  }
-
-  chain forward {
-    type filter hook forward priority 0; policy drop;
-
-    ct state established,related accept
-
-    # Vega DILARANG menjangkau jaringan internal
-    iifname "ens19" ip daddr 192.168.18.0/24 drop     # LAN server + SELURUH BMC
-    iifname "ens19" ip daddr 192.168.30.0/24 drop     # jalur data 10 GbE
-    iifname "ens19" ip daddr 192.168.0.0/22  drop     # LAN kantor
-
-    # sisanya = internet, diizinkan
-    iifname "ens19" oifname "ens18" accept
-  }
-}
-
-table ip vega_nat {
-  chain prerouting {
-    type nat hook prerouting priority -100;
-    iifname "ens18" tcp dport 8443 dnat to 192.168.50.10:443   # akses UI Vega dari LAN
-  }
-  chain postrouting {
-    type nat hook postrouting priority 100;
-    ip saddr 192.168.50.0/24 oifname "ens18" masquerade
-  }
-}
-```
-
-```bash
-sudo systemctl enable --now nftables
-```
-
-> **Urutan aturan itu penting.** Baris `drop` harus berada **di atas** baris
-> `accept`. Kalau dibalik, Vega bisa menjangkau seluruh LAN termasuk BMC.
-
-### 5.4 Kalau Vega memaksa DHCP
-
-Instrumen lab **sebaiknya statis**. Kalau firmware-nya memaksa DHCP, pasang
-`dnsmasq` dan kunci alamatnya:
-
-```
-interface=ens19
-bind-interfaces
-dhcp-range=192.168.50.10,192.168.50.20,12h
-dhcp-host=<MAC-Vega>,192.168.50.10
-```
-
----
-
-## 6. SMRT Link
+| Interface | MAC | Bridge | Alamat | Fungsi |
+|---|---|---|---|---|
+| `enp6s18` | `BC:24:11:FD:2A:12` | `vmbr0` | **`192.168.18.60/24`** | LAN, internet, UI, akses HPC |
+| `enp6s19` | `BC:24:11:0E:E2:7A` | **`vmbr1`** | **`192.168.50.1/24`** | Gateway segmen Vega |
 
 | Field | Nilai |
 |---|---|
-| **Versi SMRT Link** | *(isi)* |
-| **Web UI** | HTTPS port **`8243`** |
-| **Direktori instalasi** | *(isi — taruh di `scsi0` / SSD)* |
-| **Direktori data run** | *(isi — mount `scsi1` ke sini)* |
-| **User service** | *(isi — jangan `root`)* |
-| **Integrasi scheduler** | *(isi — lihat §7)* |
+| Default route | `via 192.168.18.1 dev enp6s18` — **hanya satu** |
+| DNS | `192.168.18.1` (ONT) |
+| `ip_forward` | `1` (`/etc/sysctl.d/99-vega.conf`) |
+| Pengelola jaringan | **NetworkManager** (`nmcli`), koneksi bernama `lan` & `vega` |
 
-> 🔴 **Verifikasi dukungan OS sebelum install.** PacBio mendaftarkan OS yang
-> didukung per versi SMRT Link, dan daftarnya biasanya tertinggal beberapa rilis
-> di belakang (Rocky 8/9, Ubuntu 20.04/22.04). **Pastikan Ubuntu 24.04 ada di
-> daftar versi SMRT Link yang dipakai** — jangan mengandalkan dokumen ini.
-> Kalau ternyata belum didukung, `ubuntu-22.04.5-desktop-amd64.iso` sudah
-> tersedia di `local:iso/`:
-> ```bash
-> qm set 101 --ide2 local:iso/ubuntu-22.04.5-desktop-amd64.iso,media=cdrom
-> ```
+> **Ubuntu Desktop memakai NetworkManager, bukan systemd-networkd.** Menulis
+> netplan biasa akan berebut dengan NM. Konfigurasi di sini dibuat lewat `nmcli`.
+> Koneksi `vega` diberi `ipv4.never-default yes` agar tidak memasang default
+> route kedua.
 
-> **Daftar port lengkap SMRT Link ambil dari install guide versi yang dipakai** —
-> selain `8243` ada beberapa port layanan internal yang berbeda antar versi.
-> Yang perlu diizinkan: dari LAN ke `8243` (akses UI), dan dari `192.168.50.0/24`
-> ke VM (instrumen mengirim data).
+### 4.1 Firewall — `nftables` (aktif, `enabled`)
+
+```nft
+table inet vega {
+  chain input   { type filter hook input priority 0; policy accept; }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    ct state established,related counter accept
+    iifname "enp6s19" ip daddr 192.168.18.1 udp dport 53 counter accept  # izin-DNS-ONT
+    iifname "enp6s19" ip daddr 192.168.18.1 tcp dport 53 counter accept  # izin-DNS-ONT-tcp
+    iifname "enp6s19" ip daddr 192.168.18.0/24 counter drop              # blok-LAN-server-BMC
+    iifname "enp6s19" ip daddr 192.168.30.0/24 counter drop              # blok-jalur-data
+    iifname "enp6s19" ip daddr 192.168.0.0/22  counter drop              # blok-LAN-kantor
+    iifname "enp6s19" oifname "enp6s18" counter accept                   # izin-internet
+  }
+}
+table ip vega_nat {
+  chain postrouting {
+    type nat hook postrouting priority 100;
+    ip saddr 192.168.50.0/24 oifname "enp6s18" counter masquerade
+  }
+}
+```
+
+**Terverifikasi jalan** — counter pada 2026-09-02 12:05 WIB:
+
+| Aturan | Paket | Arti |
+|---|---|---|
+| `izin-DNS-ONT` | 43 | Resolusi nama dari segmen Vega berhasil |
+| `izin-internet` | 313 | Trafik keluar diteruskan |
+| `masquerade` | 225 | NAT diterapkan |
+| `blok-*` | 0 | Tidak ada percobaan ke jaringan internal sejak counter direset |
+
+> 🔴 **Urutan aturan menentukan.** Baris `izin-DNS-ONT` **wajib di atas**
+> `blok-LAN-server-BMC`. Sempat terjadi: DNS Vega diarahkan ke `192.168.18.1`
+> yang justru berada di dalam rentang yang diblokir, sehingga `ping 1.1.1.1`
+> jalan tapi semua nama domain mati — terasa seperti "tidak ada internet".
+>
+> Lubang yang dibuka **sesempit mungkin**: satu alamat (`192.168.18.1`), satu
+> port (53). Seluruh `192.168.18.0/24` selebihnya — termasuk **ketiga BMC** —
+> tetap tertutup dari segmen Vega.
 
 ---
 
-## 7. Akses ke HPC — dua ganjalan
+## 5. Yang Sudah Dipasang & Dikonfigurasi
 
-Secara jaringan VM ini **sudah bisa** menjangkau `HPC-GPU` (`192.168.18.178`) dan
-`T4-Storage` (`192.168.18.193`) lewat `net0`. Tapi dua hal menahan pemanfaatannya:
+### 5.1 Paket
 
-| # | Ganjalan | Dampak | Rujukan |
+| Paket | Versi | Alasan |
+|---|---|---|
+| `qemu-guest-agent` | `1:8.2.2+ds-0ubuntu1.18` | Administrasi dari host tanpa SSH; **`fs-freeze` saat `vzdump`** agar backup konsisten |
+| `openssh-server` | `1:9.6p1-3ubuntu13.18` | Akses SSH ke `192.168.18.60` |
+| `nftables` | `1.0.9-1ubuntu0.1` | NAT + isolasi segmen Vega |
+
+### 5.2 Akun
+
+| User | UID | Grup | Peran |
 |---|---|---|---|
-| 1 | **`slurmctld` mati** — controller di `192.168.18.194` tidak merespons | SMRT Link tidak bisa melempar job ke cluster. Analisis hanya jalan lokal di VM ini (32 vCPU / 64 GB), **tidak memakai A100** | [hpc-gpu §14](../hpc-nodes/hpc-gpu.md#14-node-terkait) |
-| 2 | **Jalur hanya 1 GbE** — `net0` → `vmbr0` → `nic0` | ± **3 jam per TB**. Untuk data run PacBio ini menyakitkan | [network-map §2.2](../network-map.md#22-rencana-proxmox-2u-masuk-ke-jalur-data-sebagai-ingress) |
+| `vega` | 1000 | `vega` | Akun desktop, dibuat saat instalasi OS |
+| **`smrtanalysis`** | 1001 | `smrtanalysis`, `sudo` | **`$SMRT_USER`** — akun instalasi & layanan SMRT Link |
 
-**Solusi untuk ganjalan 2 — sudah terverifikasi bisa dikerjakan:**
+> Dokumen PacBio (hlm. 6 & 28) melarang install atau menjalankan SMRT Link
+> sebagai `root`, dan mensyaratkan install dilakukan oleh **user yang sama**
+> dengan yang menjalankan layanannya.
 
-Pasang NIC SFP+ 10 GbE di `PROXMOX-2U` ke port **`e0/0/25`** switch Zyxel (terbukti
-kosong), masukkan ke **VLAN 30**, lalu beri VM ini **NIC ketiga** di bridge tersebut.
-VM langsung bicara 10 GbE ke `HPC-GPU` dan `T4-Storage`.
+### 5.3 Batas sumber daya
 
-| Prasyarat | Status |
-|---|---|
-| Slot PCIe kosong di proxmox | ✅ 5 slot (`CPU SLOT1/3/5` x16, `SLOT2/4` x8) |
-| Port SFP+ kosong di switch | ✅ `e0/0/25` dan `e0/0/27` |
-| Jumbo frame diteruskan switch | ✅ MTU 10248 di seluruh port |
-| VLAN data sudah ada | ✅ VLAN 30 `SERVERS` |
-| NIC + transceiver | ⚠️ **belum dibeli** |
+`/etc/security/limits.d/99-smrtlink.conf` — dokumen mensyaratkan `nofile` dan
+`nproc` **minimal 8192** (hlm. 7). Bawaan Ubuntu hanya `nofile=1024`.
+
+```
+smrtanalysis soft nofile 8192      # terverifikasi: nofile=8192 nproc=8192
+smrtanalysis hard nofile 65536
+smrtanalysis soft nproc  8192
+smrtanalysis hard nproc  65536
+```
+
+### 5.4 Direktori
+
+| Path | Pemilik | Lokasi fisik | Peran menurut dokumen |
+|---|---|---|---|
+| `/opt/pacbio/smrtlink` | — | SSD | **`$SMRT_ROOT`** — ⚠️ **sengaja belum dibuat**, installer menolak jika sudah ada (hlm. 9) |
+| `/data/smrtlink/jobs_root` | `smrtanalysis` | HDD 7,8 T | `jobs_root` — keluaran analisis |
+| `/opt/pacbio/db_datadir` | `smrtanalysis` | SSD | `db_datadir` — **wajib lokal, bukan NFS** (hlm. 7) |
+| `/opt/pacbio/tmp_dir` | `smrtanalysis` | SSD | `tmp_dir` — **wajib lokal, bukan NFS** (hlm. 7) |
+| `/opt/pacbio/installer` | `smrtanalysis` | SSD | Tempat menaruh berkas `.run` |
+
+### 5.5 Sistem
+
+| Item | Nilai | Syarat dokumen |
+|---|---|---|
+| Hostname | `smrtlink` (`hostname -f` = `smrtlink`) | ✅ SMRT Link **tidak tahan perubahan hostname** (hlm. 7) — sudah final sebelum install |
+| `/etc/hosts` | `127.0.1.1 smrtlink` + `192.168.18.60 smrtlink` | ✅ konsisten |
+| Locale | `en_US.UTF-8` | ✅ diwajibkan (hlm. 7) |
+| NTP | `systemd-timesyncd` aktif, jam tersinkron, TZ `Asia/Jakarta` | ✅ sangat dianjurkan (hlm. 7) |
+| Service `enabled` | `ssh`, `nftables`, `systemd-timesyncd` | ✅ bertahan setelah reboot |
+
+### 5.6 Yang **belum** dipasang
+
+| Komponen | Status | Catatan |
+|---|---|---|
+| **Installer SMRT Link** | 🔴 belum ada | Harus diunduh dari akun PacBio — tidak tersedia publik |
+| **SMRT Link** | 🔴 belum | Menunggu installer |
+| Google Chrome | ⚪ belum | Diwajibkan untuk UI (hlm. 5). Tidak perlu di VM kalau diakses dari laptop |
+| Singularity | ⚪ belum | Hanya untuk Variant Calling / Target Enrichment — **dan keduanya butuh JMS** |
+| SLURM (`sbatch`) | ⚪ belum | Lihat §7 |
+| `curl` | ⚪ belum | Tidak ada di instalasi desktop; berguna untuk diagnosa |
 
 ---
 
-## 8. Ketergantungan & Risiko
+## 6. Kesesuaian dengan Syarat SMRT Link v26.2
+
+| Komponen | Syarat *single node* (hlm. 6) | VM 101 | |
+|---|---|---|---|
+| OS | Rocky 9/10, **Ubuntu 22.04 & 24.04** | Ubuntu 24.04.4 LTS | ✅ |
+| CPU | 16 core | **32 vCPU** | ✅ |
+| RAM | 64 GB | **64 GB** | ✅ |
+| Local storage | 1 TB SSD | 1000 GiB (983 G usable) | ✅ |
+| Analysis storage | ~2× data SMRT Cell | **7,8 TiB** | ✅ |
+
+> ✅ **Ubuntu 24.04 resmi didukung.** Kekhawatiran pada revisi dokumen ini
+> sebelumnya (temuan `KI-V07`) **tidak terbukti** — dokumen v26.2 halaman 5
+> mencantumkan Ubuntu 24.04 dalam daftar OS yang didukung. Tidak perlu install ulang.
+
+> **Kapasitas Vega:** dokumen memperkirakan ± **6 TB/tahun** (±30 GB per SMRT Cell,
+> 200 cell/tahun). Dengan analysis storage menggandakan kebutuhan, disk 7,8 TiB
+> cukup untuk sekitar **satu tahun** operasi. Rencanakan ekspansi atau
+> pemindahan arsip ke `zfs-storage` sebelum penuh.
+
+---
+
+## 7. Job Management System — pilih `NONE`
+
+Dokumen mensyaratkan **SLURM** untuk menjalankan workflow SMRT Analysis
+terdistribusi. `slurmctld` di `192.168.18.194` **tidak merespons**, jadi tidak ada
+JMS yang bisa disambungkan saat ini.
+
+Tanpa JMS, sistem berjalan **non-distributed** — semua job dieksekusi lokal di
+VM ini (32 vCPU / 64 GB), **bukan** di A100 milik `HPC-GPU`.
+
+Batasan yang mengikuti (hlm. 6):
+
+| Workflow | Batas pada single node |
+|---|---|
+| HiFi Mapping | 150 Gb |
+| Target Enrichment | hanya dengan variant calling **nonaktif** |
+| **Variant Calling** | **tidak didukung** |
+| Iso-Seq Analysis | 20 juta read |
+| Single-Cell Iso-Seq | 60 juta read |
+| Microbial Genome, PureTarget, Read Segmentation | tanpa batas |
+
+> Konfigurasi JMS bisa diubah **tanpa install ulang** begitu SLURM hidup kembali.
+
+---
+
+## 8. Port & Protokol
+
+Dari tabel resmi dokumen (hlm. 26), disaring untuk topologi di sini:
+
+| Sumber | Tujuan | Port | Status di konfigurasi kita |
+|---|---|---|---|
+| **Vega** | SMRT Link (`192.168.50.1`) | **`8243/tcp`** | ✅ satu segmen — tidak lewat chain `forward` |
+| **SMRT Link** | Vega (`192.168.50.10`) | **`9243/tcp`** | ✅ keluar dari VM, tidak difilter |
+| Vega | NTP eksternal | `123/udp` | ✅ lewat NAT |
+| Vega | Nameserver | `53/udp,tcp` | ✅ diizinkan khusus ke `192.168.18.1` |
+| Vega | SecureLink / PacBio Insight | `22`, `80`, `443` | ✅ lewat NAT |
+| Laptop/desktop | SMRT Link (`192.168.18.60`) | **`8243/tcp`** | ✅ dari LAN |
+| Laptop/desktop | Keycloak admin | `9443/tcp` | ⚪ **nonaktif secara bawaan** — biarkan begitu |
+| SMRT Link | PacBio Event & Update server | `443/tcp` | ✅ lewat gateway |
+
+> 🔴 **Alamat SMRT Link untuk instrumen: gunakan IP `192.168.50.1`, bukan hostname.**
+> Vega berada di segmen `192.168.50.0/24` dan DNS-nya mengarah ke ONT yang tidak
+> mengenal nama `smrtlink`. Mengisi hostname akan membuat instrumen gagal menemukannya.
+
+---
+
+## 9. Langkah Instalasi SMRT Link
+
+**1. Unduh & salin installer** *(butuh akun PacBio — tidak tersedia publik)*
+
+```bash
+scp smrtlink_26.2.*.run vega@192.168.18.60:/opt/pacbio/installer/
+```
+
+**2. Install sebagai `smrtanalysis`**
+
+```bash
+ssh vega@192.168.18.60
+sudo -iu smrtanalysis
+cd /opt/pacbio/installer
+chmod +x smrtlink_26.2.*.run
+./smrtlink_26.2.*.run --rootdir /opt/pacbio/smrtlink
+```
+
+**3. Jawaban prompt** — sesuai layout yang sudah disiapkan di §5.4:
+
+| Prompt | Isi |
+|---|---|
+| `jobs_root` | `/data/smrtlink/jobs_root` |
+| `db_datadir` | `/opt/pacbio/db_datadir` |
+| `tmp_dir` | `/opt/pacbio/tmp_dir` |
+| JMS type | **`NONE`** (lihat §7) |
+| `nproc` | **12** |
+| `nchunks` | **1** |
+| `nworkers` | **4** |
+
+*Tiga angka terakhir adalah rekomendasi resmi untuk single node (hlm. 9).*
+
+**4. Jalankan & uji**
+
+```bash
+/opt/pacbio/smrtlink/admin/bin/services-start
+/opt/pacbio/smrtlink/admin/bin/run-sat-services      # Site Acceptance Test
+```
+
+**5. Akses UI:** `https://192.168.18.60:8243/sl/home` dengan **Google Chrome**,
+terima peringatan sertifikat self-signed.
+
+**6. Setelah install — wajib**
+
+```bash
+# Backup database TIDAK otomatis (hlm. 28). Buat jadwal mingguan:
+/opt/pacbio/smrtlink/admin/bin/generate-cron-backup
+
+# Ganti password bawaan admin & pbinstrument (hlm. 11):
+/opt/pacbio/smrtlink/admin/bin/set-keycloak-creds --user admin \
+    --password 'BARU' --adminpassword 'LAMA'
+
+# Autostart saat boot (hlm. 29):
+# lihat /opt/pacbio/smrtlink/admin/template/smrtlink.service.tmpl
+```
+
+---
+
+## 10. Ketergantungan & Risiko
 
 | ID | Temuan | Dampak | Prioritas |
 |---|---|---|---|
-| `KI-V01` | **`zfs-storage` pakai LUKS `none`+`noauto`** — 11 disk butuh passphrase manual saat boot | `scsi1` ada di pool ini, jadi **VM tidak bisa start setelah reboot** sebelum ada orang membuka pool secara manual | 🔴 **Kritis** |
-| `KI-V02` | **Belum ada job backup** untuk VM ini | Target `pve-backup` sudah ada, tapi belum dijadwalkan. Data run tanpa salinan | 🔴 **Kritis** |
-| `KI-V03` | **`scsi0` dan `rpool` berbagi satu NVMe fisik** (Lexar NM790, SSD konsumer, tanpa redundansi) | NVMe mati = OS hypervisor **dan** OS VM hilang bersamaan | 🔴 **Kritis** |
-| `KI-V04` | **RAM overcommit** — VM 8+64+64 = 136 GiB, `zfs_arc_max` 200 GiB, RAM host 251 GiB | ARC akan menyusut sendiri, tapi marginnya tipis | 🟠 Tinggi |
-| `KI-V05` | **`slurmctld` mati** | SMRT Link tidak bisa memakai HPC-GPU | 🟠 Tinggi |
+| `KI-V01` | **`zfs-storage` pakai LUKS `none`+`noauto`** — 11 disk butuh passphrase manual saat boot | `scsi1` (`/data/smrtlink`) ada di pool ini, jadi **VM tidak bisa start setelah reboot** sebelum pool dibuka manual | 🔴 **Kritis** |
+| `KI-V02` | **Belum ada job backup** untuk VM ini | Target `pve-backup` (20 TiB, raidz2) sudah ada tapi belum dijadwalkan | 🔴 **Kritis** |
+| `KI-V03` | **`scsi0` dan `rpool` berbagi satu NVMe fisik** (Lexar NM790 konsumer, tanpa redundansi) | NVMe mati = OS hypervisor **dan** OS VM hilang bersamaan | 🔴 **Kritis** |
+| `KI-V04` | **RAM overcommit** — VM 8+64+64 = 136 GiB, `zfs_arc_max` 200 GiB, RAM host 251 GiB | ARC menyusut sendiri, margin tipis | 🟠 Tinggi |
+| `KI-V05` | **`slurmctld` mati** → JMS `NONE` | Variant Calling tidak didukung; job tidak memakai A100 | 🟠 Tinggi |
 | `KI-V06` | **Jalur ke HPC hanya 1 GbE** | ± 3 jam per TB | 🟠 Tinggi |
-| `KI-V07` | **Dukungan Ubuntu 24.04 oleh SMRT Link belum diverifikasi** | Bisa berarti install ulang | 🟠 Tinggi |
+| ~~`KI-V07`~~ | ~~Dukungan Ubuntu 24.04 belum diverifikasi~~ | ✅ **Selesai** — dokumen v26.2 hlm. 5 mencantumkan Ubuntu 24.04 sebagai OS yang didukung | 🟢 Selesai |
 | `KI-V08` | **`192.168.18.60` belum dipastikan di luar rentang DHCP ONT** | Potensi bentrok alamat | 🟡 Sedang |
-| `KI-V09` | **Firewall Proxmox tidak aktif** — `firewall=1` di `net0`/`net1` tidak berefek | Isolasi hanya bergantung pada `nftables` di dalam VM | 🟡 Sedang |
+| `KI-V09` | **Firewall Proxmox tidak aktif** — `firewall=1` di `net0`/`net1` tidak berefek | Isolasi bergantung sepenuhnya pada `nftables` di dalam VM | 🟡 Sedang |
+| `KI-V10` | **`input` chain `policy accept`** | Segmen Vega bisa menjangkau **semua** layanan VM, termasuk SSH. Wajar untuk instrumen lab, tapi bisa diperketat ke `8243` saja | 🟡 Sedang |
+| `KI-V11` | **Kapasitas data ± 1 tahun** (7,8 TiB vs ±6 TB/tahun + analisis) | Perlu rencana ekspansi atau rotasi arsip ke `zfs-storage` | 🟡 Sedang |
 
-### 8.1 Menurunkan `zfs_arc_max` (`KI-V04`)
+### 10.1 Menurunkan `zfs_arc_max` (`KI-V04`)
 
 ```bash
+# di PROXMOX-2U
 echo "options zfs zfs_arc_max=103079215104" > /etc/modprobe.d/zfs.conf   # 96 GiB
-update-initramfs -u
-# berlaku setelah reboot
+update-initramfs -u    # berlaku setelah reboot
 ```
 
-### 8.2 Menjadwalkan backup (`KI-V02`)
+### 10.2 Menjadwalkan backup (`KI-V02`)
 
 ```bash
-# backup manual pertama
+# di PROXMOX-2U
 vzdump 101 --storage pve-backup --mode snapshot --compress zstd
-
-# jadwal harian 01:00
-# Datacenter -> Backup -> Add:  storage=pve-backup, mode=snapshot, compress=zstd
+# jadwal: Datacenter -> Backup -> Add (storage=pve-backup, mode=snapshot)
 ```
 
 ---
 
-## 9. Checklist Penerapan
+## 11. Checklist
 
 - [x] Dataset `zfs-storage/vm-disks` (quota 10 TiB) + storage PVE `vm-hdd`
 - [x] Dataset `zfs-storage/backup` (quota 20 TiB) + storage PVE `pve-backup`
 - [x] Bridge `vmbr1` di `nic1` (host tanpa IP)
-- [x] VM 101 dibuat — 32 vCPU, 64 GB, SSD 1000 GiB, HDD 7,81 TiB
-- [x] `net1` terpasang ke `vmbr1`
-- [ ] **Verifikasi dukungan Ubuntu 24.04 oleh SMRT Link** (`KI-V07`)
-- [ ] Install OS: `qm start 101`, lalu konsol di `https://192.168.18.190:8006`
-- [ ] Lepas ISO setelah install: `qm set 101 --ide2 none,media=cdrom --boot order=scsi0`
-- [ ] Terapkan netplan, `ip_forward`, dan `nftables` (§5)
-- [ ] Mount `scsi1` ke direktori data SMRT Link
-- [ ] Install `qemu-guest-agent`
-- [ ] Install SMRT Link, catat versi & port di §6
-- [ ] Colok kabel LAN Vega ke **`nic1`** proxmox
-- [ ] Set Vega: IP `192.168.50.10/24`, gw `192.168.50.1`, DNS `192.168.18.1`
-- [ ] **Uji isolasi** — dari Vega, `ping 192.168.18.13` **harus gagal**
-- [ ] Jadwalkan backup (`KI-V02`)
+- [x] VM 101 — 32 vCPU, 64 GB, SSD 1000 GiB, HDD 7,81 TiB, 2 NIC
+- [x] Ubuntu 24.04.4 LTS terinstall
+- [x] `qemu-guest-agent`, `openssh-server`, `nftables` terpasang & `enabled`
+- [x] Hostname `smrtlink` + `/etc/hosts` konsisten
+- [x] IP statis `192.168.18.60` & `192.168.50.1` via `nmcli`
+- [x] `ip_forward` + NAT + isolasi ke BMC — **terverifikasi dari counter**
+- [x] Disk 7,8 TiB ter-mount permanen di `/data/smrtlink` (UUID + `nofail`)
+- [x] User `smrtanalysis`, ulimit 8192, direktori SMRT Link
+- [ ] **Unduh installer SMRT Link v26.2 dari akun PacBio**
+- [ ] Install SMRT Link (§9)
+- [ ] Jalankan `run-sat-services`
+- [ ] Ganti password `admin` & `pbinstrument`
+- [ ] Jadwalkan backup database (`generate-cron-backup`)
+- [ ] Jadwalkan `vzdump` VM (`KI-V02`)
 - [ ] Turunkan `zfs_arc_max` (`KI-V04`)
+- [ ] Pasang media converter + kabel FO ke Vega
+- [ ] Set Vega: `192.168.50.10/24`, gw `192.168.50.1`, DNS `192.168.18.1`, SMRT Link `192.168.50.1:8243`
+- [ ] **Uji isolasi** — dari Vega, `ping 192.168.18.13` **harus gagal**
 
-### 9.1 Uji sebelum Vega datang
+### 11.1 Uji sebelum Vega datang
 
-Colok laptop ke port `nic1`, set manual:
+Colok laptop ke port `nic1` proxmox:
 
 ```bash
-# di laptop
-ip addr add 192.168.50.99/24 dev <iface>
+ip addr add 192.168.50.99/24 dev <iface>      # .10 dicadangkan untuk Vega
 ip route add default via 192.168.50.1
 
-ping -c2 192.168.50.1      # sampai ke VM?
-ping -c2 1.1.1.1           # NAT jalan?
-ping -c2 google.com        # DNS jalan?
-ping -c2 192.168.18.13     # HARUS GAGAL — kalau berhasil, isolasi bocor
+ping -c2 192.168.50.1      # sampai ke VM
+ping -c2 1.1.1.1           # NAT jalan
+ping -c2 google.com        # DNS jalan
+ping -c2 192.168.18.13     # HARUS GAGAL — ujian isolasi
+```
+
+Verifikasi objektif dari sisi VM — angka, bukan tebakan:
+
+```bash
+nft list ruleset | grep -E 'counter|comment'
 ```
 
 ---
 
-## 10. Perintah Pengelolaan
+## 12. Administrasi dari Host Tanpa SSH
+
+Karena `qemu-guest-agent` aktif, seluruh VM dapat dikelola dari `PROXMOX-2U`
+**tanpa kredensial dan tanpa jaringan VM** — komunikasinya lewat virtio serial.
+Ini juga jalur pemulihan bila konfigurasi jaringan VM rusak.
 
 ```bash
-qm start 101 / qm stop 101 / qm shutdown 101
+# di PROXMOX-2U
+qm agent 101 ping
+qm guest exec 101 --timeout 30 -- /bin/bash -c "ip -br addr; nft list ruleset"
+
+# keluarannya JSON; untuk dibaca:
+qm guest exec 101 -- /bin/bash -c "<perintah>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("out-data",""))'
+```
+
+---
+
+## 13. Perintah Pengelolaan
+
+```bash
+qm start 101 / qm shutdown 101 / qm status 101
 qm config 101
-qm status 101
-qm monitor 101
-
-# konsol: https://192.168.18.190:8006  ->  VM 101  ->  Console
-
-# ganti ISO
-qm set 101 --ide2 local:iso/<nama>.iso,media=cdrom
-
-# perbesar disk data
-qm resize 101 scsi1 +1000G
-
-# snapshot sebelum perubahan besar
-qm snapshot 101 pre-smrtlink-install
+qm snapshot 101 pre-smrtlink-install       # sebelum install SMRT Link
 qm listsnapshot 101
+
+# konsol: https://192.168.18.190:8006 -> VM 101 -> Console
+# ssh   : ssh vega@192.168.18.60
 ```
