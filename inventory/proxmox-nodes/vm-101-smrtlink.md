@@ -26,7 +26,8 @@
 | Prasyarat SMRT Link (user, ulimit, locale, NTP, direktori) | ✅ selesai |
 | **SMRT Link v26.2.0.292923 terinstall** | ✅ **selesai** — `SMRT Link Install successful` |
 | **Layanan berjalan** | ✅ **`SMRT Link status: ok`** — UI di `https://192.168.18.60:8243` |
-| Site Acceptance Test | 🔵 dijalankan 2026-09-02 12:16 WIB |
+| **Site Acceptance Test** | ✅ **LULUS** — job HiFi Mapping `Job successful`, 136 detik |
+| Audit terhadap dokumen resmi | ✅ lihat [§12](#12-audit-terhadap-dokumen-instalasi-resmi) |
 | Ganti password `admin` & `pbinstrument` | 🔴 **belum — masih default pabrik** |
 | Jadwal backup database SMRT Link | 🔴 belum |
 | Autostart saat boot | 🔴 belum |
@@ -468,7 +469,7 @@ vzdump 101 --storage pve-backup --mode snapshot --compress zstd
 - [x] **`services-start`** — `SMRT Link status: ok`, UI di `https://192.168.18.60:8243`
 - [x] Verifikasi symlink `jobs_root` / `db_datadir` / `tmp_dir` mengarah benar
 - [x] Verifikasi UI terjangkau dari LAN (HTTP 200 dari `PROXMOX-2U`)
-- [x] Jalankan `run-sat-services` — Cromwell aktif, 26 dataset ter-import, job menulis ke `/data/smrtlink/jobs_root`
+- [x] Jalankan `run-sat-services` — **LULUS**, job HiFi Mapping `Job successful` 136 detik, hasil di `jobs_root/0000/0000000/0000000027`
 - [ ] **Ganti password `admin` & `pbinstrument`** — masih default pabrik ⚠️
 - [ ] Jadwalkan backup database (`generate-cron-backup`)
 - [ ] Aktifkan autostart saat boot (`admin/template/smrtlink.service.tmpl`)
@@ -500,7 +501,106 @@ nft list ruleset | grep -E 'counter|comment'
 
 ---
 
-## 12. Administrasi dari Host Tanpa SSH
+## 12. Audit terhadap Dokumen Instalasi Resmi
+
+Ditelusuri langkah demi langkah terhadap *SMRT Link software installation guide
+(v26.2)*, PN 103-891-700 Ver. 01. Diverifikasi 2026-09-02.
+
+### 12.1 Syarat sistem (hlm. 5–7)
+
+| # | Syarat | Halaman | Status |
+|---|---|---|---|
+| 1 | OS didukung (Rocky 9/10, Ubuntu 22.04/24.04) | 5 | ✅ Ubuntu 24.04.4 LTS |
+| 2 | Host Linux 64-bit, `libc` ≥ 2.17 | 5 | ✅ |
+| 3 | Google Chrome untuk UI | 5 | ⚪ tidak di VM — diakses dari laptop |
+| 4 | JMS (SLURM) bila menjalankan SMRT Analysis | 5 | ⚠️ **`NONE`** — `slurmctld` mati, lihat §7 |
+| 5 | Singularity ≥ 3.10.5 untuk Variant Calling / Target Enrichment | 5 | ⚪ belum — **butuh JMS lebih dulu**, jadi belum ada gunanya |
+| 6 | CPU 16 core / RAM 64 GB / 1 TB SSD (single node) | 6 | ✅ 32 vCPU / 64 GB / 1000 GiB |
+| 7 | Analysis storage ~2× data SMRT Cell | 6 | ✅ 7,8 TiB |
+| 8 | Install oleh **non-root** `$SMRT_USER` yang sama dengan pengelola layanan | 6 | ✅ `smrtanalysis` |
+| 9 | `$SMRT_USER` punya izin penuh rekursif di install dir, `jobs_root`, `db_datadir`, `tmp_dir` | 6 | ✅ **diverifikasi — tidak ada berkas milik user lain** |
+| 10 | Tidak ada layanan lain yang memakai port SMRT Link | 6 | ✅ |
+| 11 | Jam tersinkron NTP | 7 | ✅ `systemd-timesyncd`, TZ `Asia/Jakarta` |
+| 12 | `nofile` & `nproc` soft ≥ 8192 | 7 | ✅ 8192 lewat `limits.d` |
+| 13 | Locale `en_US.UTF-8` | 7 | ✅ |
+| 14 | Hostname stabil & terjangkau (SMRT Link tidak tahan perubahan hostname) | 7 | ✅ `smrtlink` difinalkan **sebelum** install |
+| 15 | Port `8243` terjangkau user & instrumen; SMRT Link bisa ke `9243` instrumen | 7 | ✅ `8243` `LISTEN 0.0.0.0`; jalur ke Vega terbuka |
+| 16 | `db_datadir` & `tmp_dir` **lokal, bukan NFS** | 7 | ✅ keduanya di SSD lokal |
+
+### 12.2 Langkah instalasi (hlm. 8–9)
+
+| # | Langkah | Status |
+|---|---|---|
+| 1 | Unduh & ekstrak installer | ✅ `smrtlink-release_26.2.0.292923` |
+| 2 | Login sebagai `$SMRT_USER` | ✅ `su - smrtanalysis` (login shell, agar `ulimit` berlaku) |
+| 3 | Install `--rootdir $SMRT_ROOT` | ✅ **`SMRT Link Install successful`** |
+| 3b | Setelan single node `nproc=12, nchunks=1, nworkers=4` | ✅ dipakai persis |
+| 5 | `services-start` | ✅ **`SMRT Link status: ok`** |
+| 6 | `run-sat-services` (Site Acceptance Test) | ✅ **LULUS** — job HiFi Mapping `Job successful`, 136 detik |
+| 7 | *(Opsional)* Bersihkan cache browser | ⚪ sisi klien |
+| 8 | *(Opsional)* Konfigurasi LDAP / user lokal | ⚪ **belum** — lihat §12.4 |
+| 9 | *(Opsional)* Sertifikat TLS dari CA | ⚪ **belum** — masih `pb-smrtlink-default.crt` self-signed |
+| 10 | *(Opsional tapi dianjurkan)* **Ganti password `admin` & `pbinstrument`** | 🔴 **BELUM — masih default pabrik** |
+
+### 12.3 Appendix — yang sering terlewat
+
+| Item | Halaman | Status |
+|---|---|---|
+| **Backup database terjadwal** (`generate-cron-backup`) | 28 | 🔴 **BELUM** — tidak ada entri cron. Dokumen: *"strongly recommend"* |
+| **Autostart saat boot** (`smrtlink.service.tmpl`) | 29 | 🔴 **BELUM** — tidak ada unit systemd |
+| Usage tracking (`accept-user-agreement`) | 29 | ⚠️ **ter-set `true` tanpa disengaja** pada 2026-09-02 05:24 UTC — lihat catatan di bawah |
+| Keycloak admin console (`9443`) nonaktif | 12 | ✅ nonaktif, sesuai anjuran keamanan |
+| Jangan jalankan sebagai `root` | 28 | ✅ |
+| Server di jaringan tepercaya, di belakang firewall | 28 | ✅ LAN internal, tidak terekspos internet |
+
+> ⚠️ **Catatan `accept-user-agreement`.** Perintah ini dijalankan untuk *memeriksa*
+> status, tetapi dokumen hlm. 29 menyatakan: bila dijalankan **tanpa argumen** dan
+> setelannya belum pernah diisi, ia otomatis mengeset `install-metrics` dan
+> `job-metrics` menjadi `true` **dan langsung memberi tahu PacBio**. Jadi perintah
+> itu menulis, bukan membaca.
+>
+> Untuk mematikan:
+> ```bash
+> /opt/pacbio/smrtlink/admin/bin/accept-user-agreement --install-metrics false --job-metrics false
+> ```
+> Dokumen sendiri menganjurkan menerimanya karena mempermudah troubleshooting
+> oleh PacBio. Membiarkan atau mematikan sama-sama sah — ini keputusan pemilik sistem.
+
+### 12.4 Yang belum dikerjakan — berurutan
+
+| # | Pekerjaan | Kenapa penting | Prioritas |
+|---|---|---|---|
+| 1 | **Ganti password `admin` & `pbinstrument`** | Dokumen hlm. 11: nilainya **sama di semua instalasi SMRT Link**. `pbinstrument` dipakai Vega untuk bicara ke SMRT Link | 🔴 **Kritis** |
+| 2 | **Jadwalkan backup database** | Hlm. 28: SMRT Link **tidak** backup berkala. Gagal backup = seluruh record (user, Data Set, analisis, barcode) hilang bila filesystem bermasalah | 🔴 **Kritis** |
+| 3 | **Autostart saat boot** | Tanpa ini, setelah reboot layanan harus dinyalakan manual | 🟠 Tinggi |
+| 4 | Tentukan sikap soal usage tracking | Saat ini `true` tanpa keputusan sadar | 🟠 Tinggi |
+| 5 | Tambah user SMRT Link + peran (LDAP atau lokal via Keycloak) | Hlm. 14–18. Sekarang hanya akun `admin` bawaan | 🟡 Sedang |
+| 6 | Sertifikat TLS dari CA | Hlm. 19. Tanpa ini setiap user harus menerima peringatan browser | 🟡 Sedang |
+| 7 | Pasang Chrome di VM *(bila UI diakses dari desktop VM)* | Hlm. 5 mensyaratkan Chrome | 🟢 Rendah |
+| 8 | SLURM + Singularity | Membuka Variant Calling & pemakaian A100 | 🟢 Rendah *(tergantung `slurmctld`)* |
+
+**Perintah untuk tiga yang teratas:**
+
+```bash
+sudo -iu smrtanalysis
+
+# 1. ganti password bawaan (hlm. 11)
+/opt/pacbio/smrtlink/admin/bin/set-keycloak-creds --user admin     --password 'PASSWORD-BARU' --adminpassword 'admin'
+/opt/pacbio/smrtlink/smrtcmds/developer/bin/pbservice-instrument     set-smrtlink-password --user admin --ask-pass
+# verifikasi:
+/opt/pacbio/smrtlink/smrtcmds/bin/pbservice status --host localhost --user admin --ask-pass
+
+# 2. jadwal backup database mingguan (hlm. 28) - ulangi tiap upgrade
+/opt/pacbio/smrtlink/admin/bin/generate-cron-backup
+
+# 3. autostart saat boot (hlm. 29)
+cat /opt/pacbio/smrtlink/admin/template/smrtlink.service.tmpl
+# sesuaikan lalu pasang sebagai unit systemd
+```
+
+---
+
+## 13. Administrasi dari Host Tanpa SSH
 
 Karena `qemu-guest-agent` aktif, seluruh VM dapat dikelola dari `PROXMOX-2U`
 **tanpa kredensial dan tanpa jaringan VM** — komunikasinya lewat virtio serial.
@@ -518,7 +618,7 @@ qm guest exec 101 -- /bin/bash -c "<perintah>" \
 
 ---
 
-## 13. Perintah Pengelolaan
+## 14. Perintah Pengelolaan
 
 ```bash
 qm start 101 / qm shutdown 101 / qm status 101

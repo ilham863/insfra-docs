@@ -40,6 +40,14 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` §12 — **audit lengkap terhadap dokumen
+  instalasi resmi SMRT Link v26.2** (PN 103-891-700), ditelusuri langkah demi langkah:
+  16 syarat sistem (hlm. 5–7), 10 langkah instalasi (hlm. 8–9), dan item Appendix
+  yang sering terlewat (hlm. 28–29). Memuat tabel apa yang sudah ✅, apa yang belum 🔴,
+  beserta prioritas dan perintahnya.
+- **Site Acceptance Test LULUS** — job HiFi Mapping `Job successful` dalam 136 detik,
+  hasil tersimpan di `jobs_root/0000/0000000/0000000027`. Ini mengonfirmasi seluruh
+  rantai berfungsi: services, Cromwell, database, dan penulisan ke HDD 7,8 T.
 - **SMRT Link v26.2.0.292923 terinstall dan berjalan di VM 101.** `$SMRT_ROOT`
   `/opt/pacbio/smrtlink` (4,3 GB), dijalankan sebagai `smrtanalysis`, mode `--batch`
   non-interaktif dengan `jmstype NONE`, `nworkers 4`, `nproc 12`, `maxchunks 1`.
