@@ -40,6 +40,15 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- **SMRT Link v26.2.0.292923 terinstall dan berjalan di VM 101.** `$SMRT_ROOT`
+  `/opt/pacbio/smrtlink` (4,3 GB), dijalankan sebagai `smrtanalysis`, mode `--batch`
+  non-interaktif dengan `jmstype NONE`, `nworkers 4`, `nproc 12`, `maxchunks 1`.
+  UI & REST API di **`https://192.168.18.60:8243`**, status `ok`, terjangkau dari
+  LAN (HTTP 200). Symlink `jobs_root` → HDD 7,8 T, `db_datadir` & `tmp_dir` → SSD
+  lokal semuanya terverifikasi. Site Acceptance Test dijalankan: Cromwell aktif,
+  26 dataset ter-import, job menulis ke `/data/smrtlink/jobs_root`.
+- Snapshot `pre-smrtlink-install` dibuat sebelum instalasi (guest agent melakukan
+  `fs-freeze`/`thaw` sehingga snapshot konsisten).
 - `inventory/proxmox-nodes/vm-101-smrtlink.md` **ditulis ulang dengan keadaan nyata**
   setelah OS terinstall dan jaringan dikonfigurasi. Kini memuat: nama interface
   sebenarnya (`enp6s18`/`enp6s19`), hostname `smrtlink`, mount `/data/smrtlink`
@@ -202,6 +211,10 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - *(belum ada)*
 
 ### Fixed
+- **Installer SMRT Link membutuhkan `curl`** yang tidak tersedia di Ubuntu Desktop
+  bawaan. Percobaan pertama gagal (`Error! Cannot find 'curl'`) **setelah** tarball
+  1,3 GB terekstrak. Diperbaiki dengan memasang `curl`+`wget` lalu mengulang
+  memakai `--no-extract`. Dicatat di dokumen agar tidak terulang.
 - **Koreksi: Ubuntu 24.04 ternyata DIDUKUNG SMRT Link v26.2.** Kekhawatiran yang
   dicatat sebelumnya (`KI-V07`) tidak terbukti — dokumen resmi halaman 5
   mencantumkan Rocky 9/10 dan **Ubuntu 22.04 & 24.04**. Tidak perlu install ulang.

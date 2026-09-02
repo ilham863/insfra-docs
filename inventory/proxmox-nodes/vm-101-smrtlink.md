@@ -1,7 +1,7 @@
 # VM 101 — SMRT Link / PacBio Vega (di `PROXMOX-2U`)
 
 > **Tipe Unit:** Virtual Machine (KVM) di atas [`proxmox`](proxmox.md) — bukan unit fisik
-> **Status:** 🔵 **Staging** — OS & jaringan siap, **SMRT Link belum diinstall**
+> **Status:** 🟢 **SMRT Link v26.2.0.292923 terinstall & berjalan** — instrumen Vega belum tersambung
 > **Terakhir Diperbarui:** 2026-09-02
 > **PIC:** *(isi)*
 > **Sumber Data:** dibuat & dikonfigurasi langsung via `qm` dan **QEMU guest agent** dari host, 2026-09-02
@@ -24,10 +24,14 @@
 | Jaringan LAN + segmen Vega + NAT | ✅ **selesai & terverifikasi jalan** |
 | Disk data 7,8 TB ter-mount permanen | ✅ selesai |
 | Prasyarat SMRT Link (user, ulimit, locale, NTP, direktori) | ✅ selesai |
-| **Installer SMRT Link** | 🔴 **belum ada di VM** — harus diunduh dari akun PacBio |
-| **SMRT Link terinstall** | 🔴 belum |
+| **SMRT Link v26.2.0.292923 terinstall** | ✅ **selesai** — `SMRT Link Install successful` |
+| **Layanan berjalan** | ✅ **`SMRT Link status: ok`** — UI di `https://192.168.18.60:8243` |
+| Site Acceptance Test | 🔵 dijalankan 2026-09-02 12:16 WIB |
+| Ganti password `admin` & `pbinstrument` | 🔴 **belum — masih default pabrik** |
+| Jadwal backup database SMRT Link | 🔴 belum |
+| Autostart saat boot | 🔴 belum |
 | Instrumen Vega tersambung | 🔴 belum |
-| Backup VM terjadwal | 🔴 belum |
+| Backup VM (`vzdump`) terjadwal | 🔴 belum |
 
 ---
 
@@ -234,18 +238,57 @@ smrtanalysis hard nproc  65536
 | NTP | `systemd-timesyncd` aktif, jam tersinkron, TZ `Asia/Jakarta` | ✅ sangat dianjurkan (hlm. 7) |
 | Service `enabled` | `ssh`, `nftables`, `systemd-timesyncd` | ✅ bertahan setelah reboot |
 
-### 5.6 Yang **belum** dipasang
+### 5.6 SMRT Link — terinstall 2026-09-02
+
+| Field | Nilai |
+|---|---|
+| **Versi** | **`smrtlink-release_26.2.0.292923`** |
+| **Installer** | `smrtlink-release_26.2.0.292923_linux_x86-64_libc-2.17_anydistro.run` (1,33 GB) |
+| **`$SMRT_ROOT`** | `/opt/pacbio/smrtlink` — **4,3 GB** terpakai |
+| **`$SMRT_USER`** | `smrtanalysis` |
+| **`dnsName` terdaftar** | `192.168.18.60` |
+| **UI & REST API** | **`https://192.168.18.60:8243`** |
+| **Port mendengarkan** | `8243` di `0.0.0.0` (UI/API) · `9091` di localhost (services) · `9095`/`9096` PostgreSQL internal |
+| **Keycloak admin (`9443`)** | ⚪ **nonaktif** — sesuai bawaan v26.2, biarkan begitu |
+| **JMS** | `NONE` (lihat §7) |
+| **`nworkers` / `nproc` / `maxchunks`** | `4` / `12` / `1` — rekomendasi resmi single node |
+
+Symlink `userdata` — terverifikasi mengarah ke lokasi yang direncanakan:
+
+```
+db_datadir -> /opt/pacbio/db_datadir      (SSD lokal)
+jobs_root  -> /data/smrtlink/jobs_root    (HDD 7,8 T)
+tmp_dir    -> /opt/pacbio/tmp_dir         (SSD lokal)
+```
+
+**Perintah instalasi yang dipakai** (mode `--batch`, non-interaktif):
+
+```bash
+su - smrtanalysis          # login shell, supaya ulimit 8192 berlaku
+/opt/pacbio/installer/smrtlink-release_26.2.0.292923_*.run   --rootdir   /opt/pacbio/smrtlink   --batch   --jobsroot  /data/smrtlink/jobs_root   --dbdatadir /opt/pacbio/db_datadir   --tmpdir    /opt/pacbio/tmp_dir   --jmstype   NONE   --nworkers  4   --nproc     12   --maxchunks 1
+```
+
+> ⚠️ **Installer membutuhkan `curl`** yang tidak ada di Ubuntu Desktop bawaan.
+> Percobaan pertama gagal dengan `Error! Cannot find 'curl'` **setelah** tarball
+> 1,3 GB terekstrak. Perbaikannya: `apt install curl`, lalu ulangi dengan
+> **`--no-extract`** agar tidak mengekstrak ulang (dokumen hlm. 9).
+>
+> `curl` dan `wget` kini sudah terpasang.
+
+> **Snapshot `pre-smrtlink-install`** dibuat sebelum instalasi. Guest agent
+> melakukan `fs-freeze`/`thaw` sehingga snapshot-nya konsisten.
+> ```bash
+> qm listsnapshot 101
+> qm rollback 101 pre-smrtlink-install   # kalau perlu mengulang dari nol
+> ```
+
+### 5.7 Yang **belum** dipasang
 
 | Komponen | Status | Catatan |
 |---|---|---|
-| **Installer SMRT Link** | 🔴 belum ada | Harus diunduh dari akun PacBio — tidak tersedia publik |
-| **SMRT Link** | 🔴 belum | Menunggu installer |
 | Google Chrome | ⚪ belum | Diwajibkan untuk UI (hlm. 5). Tidak perlu di VM kalau diakses dari laptop |
 | Singularity | ⚪ belum | Hanya untuk Variant Calling / Target Enrichment — **dan keduanya butuh JMS** |
 | SLURM (`sbatch`) | ⚪ belum | Lihat §7 |
-| `curl` | ⚪ belum | Tidak ada di instalasi desktop; berguna untuk diagnosa |
-
----
 
 ## 6. Kesesuaian dengan Syarat SMRT Link v26.2
 
@@ -418,11 +461,17 @@ vzdump 101 --storage pve-backup --mode snapshot --compress zstd
 - [x] `ip_forward` + NAT + isolasi ke BMC — **terverifikasi dari counter**
 - [x] Disk 7,8 TiB ter-mount permanen di `/data/smrtlink` (UUID + `nofail`)
 - [x] User `smrtanalysis`, ulimit 8192, direktori SMRT Link
-- [ ] **Unduh installer SMRT Link v26.2 dari akun PacBio**
-- [ ] Install SMRT Link (§9)
-- [ ] Jalankan `run-sat-services`
-- [ ] Ganti password `admin` & `pbinstrument`
+- [x] Unduh installer SMRT Link v26.2 dari akun PacBio
+- [x] Snapshot `pre-smrtlink-install` sebelum instalasi
+- [x] Pasang `curl` (prasyarat installer yang tidak ada di Ubuntu Desktop)
+- [x] **Install SMRT Link v26.2.0.292923** — `SMRT Link Install successful`
+- [x] **`services-start`** — `SMRT Link status: ok`, UI di `https://192.168.18.60:8243`
+- [x] Verifikasi symlink `jobs_root` / `db_datadir` / `tmp_dir` mengarah benar
+- [x] Verifikasi UI terjangkau dari LAN (HTTP 200 dari `PROXMOX-2U`)
+- [x] Jalankan `run-sat-services` — Cromwell aktif, 26 dataset ter-import, job menulis ke `/data/smrtlink/jobs_root`
+- [ ] **Ganti password `admin` & `pbinstrument`** — masih default pabrik ⚠️
 - [ ] Jadwalkan backup database (`generate-cron-backup`)
+- [ ] Aktifkan autostart saat boot (`admin/template/smrtlink.service.tmpl`)
 - [ ] Jadwalkan `vzdump` VM (`KI-V02`)
 - [ ] Turunkan `zfs_arc_max` (`KI-V04`)
 - [ ] Pasang media converter + kabel FO ke Vega
