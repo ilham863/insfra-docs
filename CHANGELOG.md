@@ -40,6 +40,74 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `docs/sop/sop-smrtlink-operasional.md` — **SOP operasional SMRT Link**, dokumen
+  lengkap untuk menjalankan sistem sehari-hari: cara akses (termasuk kenapa
+  `sudo -iu` wajib pakai `-i`), cek kesehatan, hidup/mati/restart, uji fungsional,
+  log, **6 pekerjaan yang masih tertunda beserta prioritas dan perintahnya**,
+  prosedur menyambungkan instrumen Vega dari sisi fisik sampai pendaftaran di UI,
+  5 penanganan masalah yang sudah terbukti terjadi, tiga lapis backup, prosedur
+  upgrade, dan tabel batasan yang berlaku saat ini.
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` §12A — **jebakan operasional yang
+  sudah terbukti**: `services-status` memberi hasil **palsu `Not Running`** bila
+  dijalankan dari akun `vega` (gagal baca berkas milik `smrtanalysis`, lalu
+  menyimpulkan layanan mati padahal hidup); `$SMRT_ROOT` bukan variabel bawaan;
+  dan UI hanya melayani HTTPS.
+- `SMRT_ROOT` & `PATH` dipasang di `~/.profile` milik `smrtanalysis` sehingga
+  perintah bisa diketik pendek. **Sengaja di `.profile`, bukan `.bashrc`** —
+  `.bashrc` bawaan Ubuntu langsung `return` untuk shell non-interaktif sehingga
+  `export` di dalamnya tidak pernah terbaca.
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` §12 — **audit lengkap terhadap dokumen
+  instalasi resmi SMRT Link v26.2** (PN 103-891-700), ditelusuri langkah demi langkah:
+  16 syarat sistem (hlm. 5–7), 10 langkah instalasi (hlm. 8–9), dan item Appendix
+  yang sering terlewat (hlm. 28–29). Memuat tabel apa yang sudah ✅, apa yang belum 🔴,
+  beserta prioritas dan perintahnya.
+- **Site Acceptance Test LULUS** — job HiFi Mapping `Job successful` dalam 136 detik,
+  hasil tersimpan di `jobs_root/0000/0000000/0000000027`. Ini mengonfirmasi seluruh
+  rantai berfungsi: services, Cromwell, database, dan penulisan ke HDD 7,8 T.
+- **SMRT Link v26.2.0.292923 terinstall dan berjalan di VM 101.** `$SMRT_ROOT`
+  `/opt/pacbio/smrtlink` (4,3 GB), dijalankan sebagai `smrtanalysis`, mode `--batch`
+  non-interaktif dengan `jmstype NONE`, `nworkers 4`, `nproc 12`, `maxchunks 1`.
+  UI & REST API di **`https://192.168.18.60:8243`**, status `ok`, terjangkau dari
+  LAN (HTTP 200). Symlink `jobs_root` → HDD 7,8 T, `db_datadir` & `tmp_dir` → SSD
+  lokal semuanya terverifikasi. Site Acceptance Test dijalankan: Cromwell aktif,
+  26 dataset ter-import, job menulis ke `/data/smrtlink/jobs_root`.
+- Snapshot `pre-smrtlink-install` dibuat sebelum instalasi (guest agent melakukan
+  `fs-freeze`/`thaw` sehingga snapshot konsisten).
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` **ditulis ulang dengan keadaan nyata**
+  setelah OS terinstall dan jaringan dikonfigurasi. Kini memuat: nama interface
+  sebenarnya (`enp6s18`/`enp6s19`), hostname `smrtlink`, mount `/data/smrtlink`
+  berbasis UUID, aturan `nftables` lengkap **beserta counter yang membuktikan
+  NAT dan isolasi bekerja**, daftar paket/akun/direktori yang dipasang, tabel
+  kesesuaian dengan syarat resmi SMRT Link v26.2, tabel port dari dokumen vendor,
+  runbook instalasi, dan 11 temuan risiko.
+- **VM 101 disiapkan penuh untuk SMRT Link v26.2** (rujukan: *SMRT Link software
+  installation guide v26.2*, PN 103-891-700):
+  - Ubuntu 24.04.4 LTS, hostname **`smrtlink`** + `/etc/hosts` konsisten — penting
+    karena SMRT Link **tidak tahan perubahan hostname**.
+  - Akun layanan **`smrtanalysis`** (dokumen melarang install sebagai `root`).
+  - `ulimit nofile` **1024 → 8192** lewat `limits.d` (disyaratkan dokumen).
+  - Direktori `jobs_root` (HDD 7,8 T), `db_datadir` & `tmp_dir` (SSD lokal,
+    dokumen melarang NFS untuk keduanya). `$SMRT_ROOT` **sengaja belum dibuat**.
+  - Paket: `qemu-guest-agent`, `openssh-server`, `nftables` — semuanya `enabled`.
+- **Jaringan instrumen Vega selesai & terverifikasi**: `192.168.18.60/24` (LAN) +
+  `192.168.50.1/24` (gateway Vega), `ip_forward=1`, masquerade, dan isolasi
+  `drop` ke `192.168.18.0/24`, `192.168.30.0/24`, `192.168.0.0/22`. Counter
+  membuktikan: DNS 43 paket, internet 313 paket, masquerade 225 paket lewat.
+- Disk 7,81 TiB dipindahkan dari automount GNOME (`/media/vega/Storage-Vega`,
+  tidak permanen) ke **`/data/smrtlink`** dengan entri `fstab` berbasis UUID + `nofail`.
+- **Storage PVE baru di `PROXMOX-2U`** — menutup temuan lama bahwa `zfs-storage`
+  (140 TB) tidak terdaftar di Proxmox:
+  - **`vm-hdd`** — `zfspool` di `zfs-storage/vm-disks`, quota **10 TiB**,
+    `sparse`, `blocksize 64k` (memangkas padding raidz2 dibanding default 16k).
+  - **`pve-backup`** — `dir` di `zfs-storage/backup`, quota **20 TiB**, content
+    `backup`, retensi 7 harian / 4 mingguan / 3 bulanan. **Ini target `vzdump`
+    pertama yang pernah ada di node ini.**
+- **Bridge `vmbr1`** di `nic1` (port Broadcom kedua yang selama ini menganggur),
+  **sengaja tanpa IP di host** — segmen khusus instrumen PacBio Vega, dengan
+  VM 101 sebagai gateway/NAT. Backup config lama di `/etc/network/interfaces.bak-2026-09-02`.
+- **VM 101 `ubuntu24-desktop`** — 32 vCPU, 64 GiB RAM (ballooning off), UEFI/q35,
+  SSD 1000 GiB + EFI di `nvme-scratch`, HDD 7,81 TiB di `vm-hdd`, dua NIC
+  (`vmbr0` untuk LAN/HPC, `vmbr1` untuk Vega).
 - `inventory/network-devices/zyxel-switch.md` — **didata penuh lewat CLI switch**
   (Telnet, perintah `show` saja). Model **ZyXEL MGS3520-28FX**, serial
   `S175852000302`, firmware `V1.06(ABGV.0)b1` **compiled 2019-08-07**, 28 port,
@@ -167,6 +235,26 @@ Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian
 - *(belum ada)*
 
 ### Fixed
+- **Installer SMRT Link membutuhkan `curl`** yang tidak tersedia di Ubuntu Desktop
+  bawaan. Percobaan pertama gagal (`Error! Cannot find 'curl'`) **setelah** tarball
+  1,3 GB terekstrak. Diperbaiki dengan memasang `curl`+`wget` lalu mengulang
+  memakai `--no-extract`. Dicatat di dokumen agar tidak terulang.
+- **Koreksi: Ubuntu 24.04 ternyata DIDUKUNG SMRT Link v26.2.** Kekhawatiran yang
+  dicatat sebelumnya (`KI-V07`) tidak terbukti — dokumen resmi halaman 5
+  mencantumkan Rocky 9/10 dan **Ubuntu 22.04 & 24.04**. Tidak perlu install ulang.
+- **Koreksi aturan firewall segmen Vega.** Versi awal memblokir seluruh
+  `192.168.18.0/24` sementara DNS instrumen justru diarahkan ke `192.168.18.1` —
+  akibatnya `ping` ke IP jalan tapi semua nama domain mati. Ditambahkan izin
+  sesempit mungkin (satu alamat, port 53 saja) **di atas** aturan blok; seluruh
+  BMC tetap tertutup dari segmen instrumen.
+- Aturan DNAT `8443 -> 192.168.50.10:443` **dihapus** — dipasang spekulatif
+  sebelum dokumen vendor tersedia, dan ternyata tidak dipakai SMRT Link.
+- `inventory/proxmox-nodes/proxmox.md` — diselaraskan dengan keadaan setelah
+  perubahan: §3.3 (`nic1` kini slave `vmbr1`, baris `vmbr1` ditambahkan), §7.3
+  (storage `vm-hdd` & `pve-backup`, plus catatan bahwa `vega-storage` kini jadi
+  sisa yang bisa dihapus), §8.1 (VM 300 diganti VM 101), §8.3 (alokasi jadi
+  80 vCPU dari 128), dan §12 (temuan #9 **selesai**, temuan #1 sebagian tertangani).
+  Blok header yang sebelumnya tersela catatan VM 300 juga dirapikan.
 - `inventory/network-map.md` §3 — **koreksi enam kesimpulan discovery 2026-08-28
   yang terbukti keliru**: `192.168.18.200` bukan "server web/aplikasi" melainkan
   **BMC Supermicro milik `T4-Storage`**; `192.168.18.250` bukan "appliance/printer"

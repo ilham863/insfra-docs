@@ -7,38 +7,28 @@
 > **Sumber Data:** auto-collect via SSH — `scripts/collect-proxmox.sh`, 2026-09-02 02:24 WIB
 > · koleksi ulang **2026-09-02 02:40 WIB** (verifikasi silang saat pendataan `T4-Storage`)
 
-> 🔴 **VM 300 `vega` sudah tidak ada lagi saat koleksi 02:40.**
-> Log task Proxmox menunjukkan urutan berikut:
+> **Dokumen Terkait:** [vm-101-smrtlink](vm-101-smrtlink.md) · [server-changelog](../../track-record/server-changelog.md) · [maintenance-log](../../track-record/maintenance-log.md) · [Panduan Penginputan](../../docs/penginputan-node.md)
+
+> **Riwayat VM 300 → VM 101.** VM 300 `vega` dibuat 2026-09-01 16:34 lalu
+> **dihapus** 2026-09-02 02:29:45 (`qmdestroy:300` di task log). Perannya kini
+> digantikan **VM 101 `ubuntu24-desktop`** yang dibuat 2026-09-02 — lihat
+> [`vm-101-smrtlink.md`](vm-101-smrtlink.md).
 >
-> | Waktu (WIB) | Task | Hasil |
-> |---|---|---|
-> | 2026-09-01 16:34:39 | `qmcreate:300` | OK |
-> | 2026-09-01 16:48:06 | `qmstart:300` | OK |
-> | 2026-09-02 02:25:55 | `qmconfig:300` | OK |
-> | **2026-09-02 02:29:45** | **`qmdestroy:300`** | **OK** |
->
-> Pada koleksi 02:40, `qm list` hanya menampilkan **VM 100 dan VM 200**, dan
-> `/etc/pve/qemu-server/` hanya berisi `100.conf` & `200.conf`. Konsisten dengan
-> itu, `nvme-scratch` turun dari **12.9 G → 6.17 G** (persis sebesar
-> `vm-300-disk-0` yang 6.70 G).
->
-> **Seluruh bagian bertanda 🆕 tentang VM 300 di dokumen ini karena itu sudah
-> usang** (§8.1, §7.2, §8.3, dan catatan di §6.1). Dataset `zfs-storage/vega-storage`
-> dan `nvme-scratch/vega-filesystem` **masih ada** — keduanya tidak ikut terhapus.
->
-> Dibiarkan apa adanya karena belum jelas apakah VM ini akan dibuat ulang.
-> **Kalau `vega` dibangun ulang:** perbarui angka-angkanya. **Kalau dibatalkan:**
-> hapus bagian-bagian tersebut dan bersihkan dua dataset sisa itu.
-> **Dokumen Terkait:** [server-changelog](../../track-record/server-changelog.md) · [maintenance-log](../../track-record/maintenance-log.md) · [Panduan Penginputan](../../docs/penginputan-node.md)
+> Sisa yang belum dibersihkan: dataset `zfs-storage/vega-storage` (kosong, tipe
+> `dir`, digantikan `vm-hdd`) dan `nvme-scratch/vega-filesystem` (6,17 G).
+
 
 > **Peran node ini:** hypervisor tunggal (standalone, non-cluster) yang menjalankan
 > VM pengembangan pipeline bioinformatika, sekaligus merangkap **host penyimpanan
 > arsip 140 TB** (pool `zfs-storage`) dan target backup lokal (`backup-pool`).
 >
-> Sejak 2026-09-01 node ini juga menjadi **host SMRT Link untuk sekuenser PacBio
-> Vega** (VM 300 `vega`) — lihat [§8.1](#81-vm-kvm). Peran ini menyimpang dari
-> [README §2](../../README.md#2-arsitektur-umum) yang menetapkan host virtualisasi
-> **tidak** menjalankan job berat.
+> Sejak 2026-09-02 node ini juga menjadi **host SMRT Link untuk sekuenser PacBio
+> Vega** (**VM 101**) sekaligus **gateway/NAT instrumen** — lihat
+> [§8.1](#81-vm-kvm) dan [`vm-101-smrtlink.md`](vm-101-smrtlink.md).
+>
+> Peran ini justru **sejalan** dengan [README §2.2](../../README.md#22-arsitektur-target--proxmox-sebagai-ingress-data)
+> yang menetapkan `PROXMOX-2U` sebagai **ingress data** — data sekuenser masuk
+> lewat satu pintu di sini sebelum disalurkan ke tier analisis.
 
 ---
 
@@ -252,9 +242,10 @@ Detail modul:
 | Interface | MAC | Status | Speed | MTU | Driver | Bus | Keterangan |
 |---|---|---|---|---|---|---|---|
 | `nic0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | **1000 Mb/s** | 1500 | `tg3` | PCI | uplink aktif, slave `vmbr0` |
-| `nic1` | `7c:c2:55:c0:b7:eb` | ⚪ DOWN | — | 1500 | `tg3` | PCI | port fisik, belum dipakai |
+| `nic1` | `7c:c2:55:c0:b7:eb` | ⚪ DOWN *(no-carrier)* | — | 1500 | `tg3` | PCI | 🆕 slave **`vmbr1`** — dicadangkan untuk instrumen **PacBio Vega** |
 | `nic2` | `be:3a:f2:b6:05:9f` | ⚪ DOWN | — | 1500 | `rndis_host` | **USB** | ⚠️ **bukan port fisik** — NIC virtual BMC |
-| `vmbr0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | — | 1500 | — | virtual | bridge utama |
+| `vmbr0` | `7c:c2:55:c0:b7:ea` | 🟢 UP | — | 1500 | — | virtual | bridge utama, LAN `192.168.18.0/24` |
+| **`vmbr1`** 🆕 | `7c:c2:55:c0:b7:eb` | ⚪ DOWN | — | 1500 | — | virtual | **segmen instrumen Vega** — host sengaja **tanpa IP**, VM 101 yang jadi gateway. Lihat [vm-101-smrtlink](vm-101-smrtlink.md) |
 
 > ⚠️ **Koreksi dari pendataan 2026-08-28:** `nic2` sebelumnya tercatat sebagai port
 > fisik "belum dipakai". Sebenarnya itu **NIC virtual USB dari BMC**
@@ -587,7 +578,9 @@ Semua pool melaporkan `errors: No known data errors`.
 | `local` | dir (`/var/lib/vz`) | backup, vztmpl, import, iso | 🟢 active | 164 G | 16.8% |
 | `local-zfs` | zfspool (`rpool/data`) | rootdir, images (sparse) | 🟢 active | 158 G | 13.7% |
 | `nvme-scratch` | zfspool (`/nvme-scratch`) | images, rootdir (sparse) | 🟢 active | 3.5 T | **0.4%** |
-| **`vega-storage`** | dir (`/zfs-storage/vega-storage`) | images, rootdir | 🟢 active | **10 T** | 0.0% |
+| **`vega-storage`** | dir (`/zfs-storage/vega-storage`) | images, rootdir | 🟢 active | **10 T** | 0.0% ⚠️ *sisa VM 300, kosong* |
+| **`vm-hdd`** 🆕 | **zfspool** (`zfs-storage/vm-disks`) | images, rootdir — sparse, `blocksize 64k` | 🟢 active | **10 T** (quota) | 0.0% |
+| **`pve-backup`** 🆕 | dir (`/zfs-storage/backup`) | **backup** — 7 harian / 4 mingguan / 3 bulanan | 🟢 active | **20 T** (quota) | 0.0% |
 
 `/etc/pve/storage.cfg`:
 
@@ -620,10 +613,28 @@ dir: vega-storage
 > dataset ZFS yang di-share ke VM lewat **virtiofs** (pola yang sudah dipakai
 > VM 200), atau didaftarkan sebagai `zfspool`, bukan `dir`.
 
-> ⚠️ **`zfs-storage` (140 TB) dan `backup-pool` (11 TB) tidak terdaftar sebagai
-> storage Proxmox.** Keduanya hanya diakses dari sisi host / lewat virtiofs.
-> Artinya kapasitas terbesar di mesin ini tidak terlihat di UI Proxmox dan
-> tidak bisa jadi target `vzdump` tanpa didaftarkan lebih dulu.
+> ✅ **Diperbaiki 2026-09-02.** `zfs-storage` kini terdaftar lewat dua dataset:
+> **`vm-hdd`** (`zfs-storage/vm-disks`, quota 10 TiB, tipe `zfspool`) untuk disk VM,
+> dan **`pve-backup`** (`zfs-storage/backup`, quota 20 TiB) sebagai **target `vzdump`**
+> — yang selama ini tidak ada sama sekali.
+>
+> ```bash
+> zfs create -o quota=10T zfs-storage/vm-disks
+> zfs create -o quota=20T -o compression=zstd-3 zfs-storage/backup
+> pvesm add zfspool vm-hdd --pool zfs-storage/vm-disks --content images,rootdir --sparse 1 --blocksize 64k
+> pvesm add dir pve-backup --path /zfs-storage/backup --content backup \n>         --prune-backups keep-daily=7,keep-weekly=4,keep-monthly=3
+> ```
+>
+> ⚠️ **`backup-pool` (11 TB) masih belum terdaftar** dan sudah 93–95% penuh di atas
+> single disk tanpa redundansi. `pve-backup` di `zfs-storage` (raidz2) adalah target
+> yang jauh lebih layak.
+
+> ⚠️ **`vega-storage` kini menjadi sisa.** Dibuat untuk VM 300 yang sudah dihapus,
+> isinya 0 byte, dan tipenya `dir` — bukan bentuk yang tepat. Digantikan oleh
+> `vm-hdd`. Kalau memang tidak dipakai:
+> ```bash
+> pvesm remove vega-storage && zfs destroy zfs-storage/vega-storage
+> ```
 
 ---
 
@@ -635,7 +646,12 @@ dir: vega-storage
 |---|---|---|---|---|---|---|
 | **100** | `dev-pipeline` | ⚪ stopped | 24 | 8 GiB | 32 G (`local-zfs`) | `automation`, `dev` |
 | **200** | `dev-bioinfo` | ⚪ stopped | 24 | 64 GiB (balloon 16 GiB) | 100 G (`local-zfs`) | `bioinformatika`, `dev` |
-| **300** | **`vega`** 🆕 | ⚪ stopped | 16 *(pending 32)* | 64 GiB | 1 T (`nvme-scratch`) | *(belum ada tag)* |
+| **101** | **`ubuntu24-desktop`** 🆕 | ⚪ stopped | **32** | **64 GiB** (balloon off) | 1000 G (`nvme-scratch`) + 7,81 T (`vm-hdd`) | `desktop`, `ubuntu`, `vega` |
+
+> 🆕 **VM 101 menggantikan VM 300 yang dihapus.** Ini host **SMRT Link** untuk
+> sekuenser **PacBio Vega**, sekaligus gateway/NAT instrumen dan jalur akses ke HPC.
+> **Dokumen lengkapnya terpisah:** [`vm-101-smrtlink.md`](vm-101-smrtlink.md) —
+> memuat topologi, konfigurasi jaringan, standar NAT/isolasi, dan checklist penerapan.
 
 **VM 100 — `dev-pipeline`**
 
@@ -709,14 +725,18 @@ Perbandingan dengan syarat PacBio (kolom *SMRT Link single node*):
 
 | Resource | Host | Teralokasi ke VM | Sisa |
 |---|---|---|---|
-| Thread CPU | 128 | 64 (24 + 24 + 16) · **80 bila VM 300 jadi 32** | 64–48 |
+| Thread CPU | 128 | **80** (24 + 24 + 32) | 48 |
 | RAM | 251 GiB | **136 GiB** (8 + 64 + 64) | 115 GiB *(dikurangi ARC hingga 200 GiB)* |
 | Storage `local-zfs` | 158 G | ±21 G | — |
-| Storage `nvme-scratch` | 3.5 T | 2 T sparse (VM 200 + VM 300) | 3.39 T aktual |
-| Storage `vega-storage` | 10 T (quota) | 0 | 10 T |
+| Storage `nvme-scratch` | 3.5 T | 2 T sparse (VM 200 + VM 101) | 3.39 T aktual |
+| Storage `vm-hdd` 🆕 | 10 T (quota) | 7,81 T sparse (VM 101) | ± 2,2 T |
+| Storage `pve-backup` 🆕 | 20 T (quota) | 0 | 20 T |
+| Storage `vega-storage` | 10 T (quota) | 0 ⚠️ *sisa* | 10 T |
 
 > ⚠️ Ketiga VM **tidak boleh menyala bersamaan** dengan ARC di 200 GiB:
 > 136 GiB VM + 200 GiB ARC = 336 GiB pada host 251 GiB, tanpa swap.
+> **Turunkan `zfs_arc_max` ke ± 96 GiB** sebelum VM 101 dipakai produksi —
+> lihat [vm-101-smrtlink §8.1](vm-101-smrtlink.md#81-menurunkan-zfs_arc_max-ki-v04).
 
 ### 8.4 Perintah pengelolaan
 
@@ -808,7 +828,7 @@ Diurutkan dari dampak paling besar. Semua temuan berasal dari pengumpulan data
 
 | # | Temuan | Dampak | Prioritas |
 |---|---|---|---|
-| 1 | **Tidak ada backup VM sama sekali** — tidak ada job vzdump, dump dir kosong | VM 100 & 200 hilang permanen bila `rpool` / NVMe gagal | 🔴 Kritis |
+| 1 | **Tidak ada backup VM sama sekali** — belum ada job vzdump terjadwal | VM 100, 200 & 101 hilang permanen bila `rpool` / NVMe gagal. 🟡 *Sebagian tertangani 2026-09-02: target `pve-backup` (20 TiB di raidz2) sudah dibuat — tinggal menjadwalkan job* | 🔴 Kritis |
 | 2 | **`backup-pool` 93% penuh, single disk tanpa redundansi**, berisi 10.1 T data | 1 disk mati = 10 T hilang. Di atas 90% performa ZFS juga anjlok | 🔴 Kritis |
 | 3 | **Passphrase LUKS & prosedur unlock belum terdokumentasi** | Kunci hilang = 140 TB `zfs-storage` tidak bisa dibuka selamanya | 🔴 Kritis |
 | 4 | **`rpool` dan `nvme-scratch` berbagi satu NVMe fisik**, keduanya tanpa redundansi | 1 NVMe mati = OS hypervisor + scratch + disk VM hilang serentak | 🔴 Kritis |
@@ -816,7 +836,7 @@ Diurutkan dari dampak paling besar. Semua temuan berasal dari pengumpulan data
 | 6 | **IPMI satu segmen dengan jaringan data** (`192.168.18.13`, VLAN disabled) + **DHCP** | BMC bisa dijangkau siapa pun di LAN; IP bisa berubah sewaktu-waktu | 🟠 Tinggi |
 | 7 | **RAM hanya mengisi 4 dari 8 channel** | Bandwidth memori ±50% dari kemampuan platform — terasa di assembly & index STAR | 🟠 Tinggi |
 | 8 | **Uplink hanya 1 GbE** (`nic0`), `nic1` / `nic2` menganggur | Melayani 140 TB lewat pipa 1 Gb/s (±3 jam per TB); bonding belum dimanfaatkan | 🟠 Tinggi |
-| 9 | **`zfs-storage` & `backup-pool` tidak terdaftar sebagai storage PVE** | Kapasitas terbesar tak terlihat di UI, tidak bisa jadi target `vzdump` | 🟡 Sedang |
+| 9 | ~~**`zfs-storage` tidak terdaftar sebagai storage PVE**~~ | ✅ **Selesai 2026-09-02** — terdaftar sebagai `vm-hdd` + `pve-backup`. `backup-pool` masih belum terdaftar | 🟢 Selesai |
 | 10 | **`zfs_arc_max` 200 GiB** vs RAM 251 GiB dengan alokasi VM 72 GiB | Overcommit; ARC menyusut, tapi margin tipis saat VM 200 menyala | 🟡 Sedang |
 | 11 | **SNMP BMC masih community `public`** | Informasi sensor & inventaris terbaca tanpa autentikasi | 🟡 Sedang |
 | 12 | **`PermitRootLogin yes`**, hanya user `root@pam`, tanpa 2FA | Tidak ada pemisahan akun, tidak ada jejak audit per-orang | 🟡 Sedang |

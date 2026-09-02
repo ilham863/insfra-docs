@@ -102,6 +102,7 @@ dari nilai apa ke nilai apa, kenapa, siapa, dan apa dampaknya.
 
 | ID | Tanggal | Node | Kategori | Ringkasan | MNT Terkait |
 |---|---|---|---|---|---|
+| `SCL-2026-009` | 2026-09-02 | **`PROXMOX-2U`** | `SVC-CONFIG`, `NET-CONFIG` | Daftarkan `zfs-storage` ke PVE (`vm-hdd` 10T + `pve-backup` 20T), bridge `vmbr1` di `nic1`, buat VM 101 SMRT Link | — |
 | `SCL-2026-008` | ⚠️ *(tidak diketahui)* | **`T4-Storage`** | `NET-CONFIG` | IP manajemen `192.168.18.113` → `192.168.18.193` — **perubahan tidak tercatat**, memutus `fstab` `HPC-GPU` & seluruh job Prometheus | — |
 | `SCL-2026-007` | 2026-06-22 | `hpc-node-01` | `HW-NIC`, `NET-CONFIG` | 10GbE → dual 25GbE LACP, MTU 9000 | `MNT-2026-011` |
 | `SCL-2026-006` | 2026-06-14 | `storage-node-01` | `OS-DRIVER` | OpenZFS 2.1.15 → 2.2.4, `autotrim=on` | `MNT-2026-010` |
@@ -125,6 +126,71 @@ dari nilai apa ke nilai apa, kenapa, siapa, dan apa dampaknya.
 ---
 
 ## Riwayat Lengkap
+
+### SCL-2026-009 — Storage PVE, Bridge Vega, dan VM SMRT Link di PROXMOX-2U
+
+| Field | Isi |
+|---|---|
+| **ID** | `SCL-2026-009` |
+| **Tanggal Efektif** | `2026-09-02` |
+| **Node Terdampak** | `proxmox.server` / **PROXMOX-2U** (Board Serial `ZM253S601908`) |
+| **Kategori** | `SVC-CONFIG`, `NET-CONFIG` |
+| **Tiket Maintenance Terkait** | — |
+| **PIC** | *(isi)* |
+| **Disetujui Oleh** | *(isi)* |
+| **Reversibel?** | Ya |
+
+**Perubahan:**
+
+| Item | Sebelum | Sesudah |
+|---|---|---|
+| Storage PVE | `local`, `local-zfs`, `nvme-scratch`, `vega-storage` | **+ `vm-hdd`** (zfspool, `zfs-storage/vm-disks`, quota 10 TiB, blocksize 64k) |
+| Target `vzdump` | ❌ **tidak ada sama sekali** | **`pve-backup`** (dir, `zfs-storage/backup`, quota 20 TiB, retensi 7/4/3) |
+| Bridge jaringan | `vmbr0` saja | **+ `vmbr1`** di `nic1`, tanpa IP di host |
+| `nic1` | menganggur, tidak terpakai | slave `vmbr1` — dicadangkan untuk instrumen PacBio Vega |
+| Daftar VM | 100, 200 | **+ 101 `ubuntu24-desktop`** (32 vCPU, 64 GiB, SSD 1000 GiB + HDD 7,81 TiB, 2 NIC) |
+
+**Alasan:**
+Menyiapkan host SMRT Link untuk sekuenser PacBio Vega. Instrumen akan dicolok
+lewat kabel LAN ke `nic1`, mendapat internet lewat NAT di VM 101, dan data run
+masuk lewat VM ini sebelum disalurkan ke tier analisis — perwujudan pertama
+desain *ingress data* di README §2.2.
+
+Sekaligus menutup dua temuan lama: `zfs-storage` yang tidak terdaftar di PVE
+(temuan #9), dan tidak adanya target backup sama sekali (temuan #1).
+
+**Dampak pada operasional:**
+- Kapasitas 140 TB kini terlihat & terpakai dari Proxmox.
+- Backup VM akhirnya **punya target** — tinggal dijadwalkan.
+- Alokasi vCPU naik 64 → **80 dari 128**; RAM teralokasi tetap 136 GiB.
+- 🔴 **VM 101 tidak akan start setelah reboot** sampai `zfs-storage` di-unlock
+  manual — pool memakai LUKS `none`+`noauto` di 11 disk.
+
+**Dokumen yang ikut diperbarui:**
+- [x] `inventory/proxmox-nodes/vm-101-smrtlink.md` *(baru)*
+- [x] `inventory/proxmox-nodes/proxmox.md` (§3.3, §7.3, §8.1, §8.3, §12, header)
+- [x] `CHANGELOG.md`
+- [ ] `README.md` §3 mapping storage — belum diselaraskan
+- [ ] Jadwal backup VM — **belum dibuat**
+
+**Verifikasi:**
+```
+$ pvesm status
+pve-backup           dir     active     21474836480     1024  21474835456   0.00%
+vm-hdd           zfspool     active     10737418240      347  10737417892   0.00%
+
+$ qm list
+       101 ubuntu24-desktop     stopped    65536           1000.00 0
+
+$ brctl show
+vmbr1		8000.7cc255c0b7eb	no		nic1
+```
+
+**Catatan:**
+Konfigurasi jaringan lama dicadangkan di `/etc/network/interfaces.bak-2026-09-02`
+sebelum `vmbr1` ditambahkan. `ifreload -a` dijalankan tanpa mengganggu `vmbr0`.
+
+---
 
 ### SCL-2026-008 — Perpindahan IP Manajemen T4-Storage (rekonstruksi retroaktif)
 
