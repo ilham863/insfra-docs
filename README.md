@@ -511,7 +511,7 @@ Perangkat jaringan — **keduanya sama kritisnya dengan server**:
 | `scripts/` | Kolektor data inventaris (read-only, dijalankan via SSH) |
 | `inventory/network-map.md` | Peta jaringan & hasil discovery on-premise |
 | `docs/penginputan-node.md` | Panduan cara mendata & memperbarui node |
-| `docs/sop/` | Standard Operating Procedure |
+| `docs/sop/` | Standard Operating Procedure — termasuk `sop-smrtlink-operasional.md` |
 | `track-record/` | Riwayat operasional (maintenance & perubahan hardware) |
 | `assets/images/` | Foto rak, diagram, screenshot |
 

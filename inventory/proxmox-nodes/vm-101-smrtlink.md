@@ -6,6 +6,7 @@
 > **PIC:** *(isi)*
 > **Sumber Data:** dibuat & dikonfigurasi langsung via `qm` dan **QEMU guest agent** dari host, 2026-09-02
 > **Rujukan Vendor:** *SMRT Link software installation guide (v26.2)*, PN 103-891-700 Ver. 01 (Agustus 2026)
+> **SOP Operasional:** [`docs/sop/sop-smrtlink-operasional.md`](../../docs/sop/sop-smrtlink-operasional.md)
 > **Dokumen Terkait:** [proxmox](proxmox.md) · [network-map](../network-map.md) · [zyxel-switch](../network-devices/zyxel-switch.md) · [ont-huawei](../network-devices/ont-huawei.md) · [hpc-gpu](../hpc-nodes/hpc-gpu.md)
 
 > **Peran VM ini:** menjalankan **SMRT Link** untuk sekuenser **PacBio Vega**,
@@ -597,6 +598,53 @@ sudo -iu smrtanalysis
 cat /opt/pacbio/smrtlink/admin/template/smrtlink.service.tmpl
 # sesuaikan lalu pasang sebagai unit systemd
 ```
+
+---
+
+## 12A. Jebakan Operasional yang Sudah Terbukti
+
+### 12A.1 🔴 `services-status` memberi hasil PALSU bila salah akun
+
+| Akun | Hasil |
+|---|---|
+| **`smrtanalysis`** | ✅ `SMRT Link status: ok` — **benar** |
+| `vega` | 🔴 **`SMRT Link status: Not Running`** — **PALSU** |
+| `root` | ✅ `ok`, tapi jangan dibiasakan |
+
+Dijalankan sebagai `vega`, skrip gagal membaca berkas internal milik
+`smrtanalysis` (`Permission denied` pada `get-status`) lalu menyimpulkan layanan
+tidak berjalan — padahal hidup normal.
+
+> **Ini jenis kesalahan yang bikin panik tak perlu.** Bila teknisi atau siapa pun
+> menjalankannya dari akun yang salah, mereka akan mengira instalasi gagal.
+> **Selalu `sudo -iu smrtanalysis` lebih dulu.**
+
+### 12A.2 `$SMRT_ROOT` bukan variabel bawaan
+
+`$SMRT_ROOT` hanyalah notasi di dokumen PacBio. Menyalin perintah dokumen
+mentah-mentah menghasilkan `/admin/bin/services-status` → *command not found*.
+
+Sejak 2026-09-02 sudah didefinisikan di `~/.profile` milik `smrtanalysis`:
+
+```bash
+export SMRT_ROOT=/opt/pacbio/smrtlink
+export PATH="$SMRT_ROOT/admin/bin:$SMRT_ROOT/smrtcmds/bin:$PATH"
+```
+
+Sehingga `services-status`, `pbservice`, `generate-cron-backup` bisa diketik pendek.
+
+> ⚠️ Ditaruh di **`.profile`**, bukan `.bashrc`. `.bashrc` bawaan Ubuntu punya
+> guard yang langsung `return` untuk shell non-interaktif, sehingga `export`
+> di dalamnya tidak pernah terbaca oleh `su - user -c '...'`.
+>
+> Karena `.profile` hanya dibaca **login shell**, gunakan `sudo -iu` (dengan `-i`),
+> bukan `sudo -u`.
+
+### 12A.3 UI hanya melayani HTTPS
+
+`http://...:8243` → **`400 Bad Request — The plain HTTP request was sent to
+HTTPS port`**. Bukan kerusakan, cuma kurang `s`. Browser modern menyembunyikan
+skema di address bar, jadi ketik `https://` eksplisit.
 
 ---
 

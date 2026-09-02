@@ -40,6 +40,22 @@ Bagian ini menampung perubahan yang sudah di-merge ke `main` tapi belum di-*tag*
 Saat rilis, pindahkan isinya ke section versi baru di bawah dan kosongkan bagian ini.
 
 ### Added
+- `docs/sop/sop-smrtlink-operasional.md` — **SOP operasional SMRT Link**, dokumen
+  lengkap untuk menjalankan sistem sehari-hari: cara akses (termasuk kenapa
+  `sudo -iu` wajib pakai `-i`), cek kesehatan, hidup/mati/restart, uji fungsional,
+  log, **6 pekerjaan yang masih tertunda beserta prioritas dan perintahnya**,
+  prosedur menyambungkan instrumen Vega dari sisi fisik sampai pendaftaran di UI,
+  5 penanganan masalah yang sudah terbukti terjadi, tiga lapis backup, prosedur
+  upgrade, dan tabel batasan yang berlaku saat ini.
+- `inventory/proxmox-nodes/vm-101-smrtlink.md` §12A — **jebakan operasional yang
+  sudah terbukti**: `services-status` memberi hasil **palsu `Not Running`** bila
+  dijalankan dari akun `vega` (gagal baca berkas milik `smrtanalysis`, lalu
+  menyimpulkan layanan mati padahal hidup); `$SMRT_ROOT` bukan variabel bawaan;
+  dan UI hanya melayani HTTPS.
+- `SMRT_ROOT` & `PATH` dipasang di `~/.profile` milik `smrtanalysis` sehingga
+  perintah bisa diketik pendek. **Sengaja di `.profile`, bukan `.bashrc`** —
+  `.bashrc` bawaan Ubuntu langsung `return` untuk shell non-interaktif sehingga
+  `export` di dalamnya tidak pernah terbaca.
 - `inventory/proxmox-nodes/vm-101-smrtlink.md` §12 — **audit lengkap terhadap dokumen
   instalasi resmi SMRT Link v26.2** (PN 103-891-700), ditelusuri langkah demi langkah:
   16 syarat sistem (hlm. 5–7), 10 langkah instalasi (hlm. 8–9), dan item Appendix
